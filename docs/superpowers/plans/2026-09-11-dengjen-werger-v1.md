@@ -103,6 +103,128 @@ Boundary rule followed throughout: `domain` has zero dependencies on anything el
 
 Sequenced first deliberately (per the design review): the riskiest unknowns — Crowdin's actual write-API behavior and Skunk's behavior on Supabase's pooler — get proven against real services before any gamification logic is built on top of assumptions about them.
 
+### Task 0: Repository hygiene matching ZirekHQ's baseline
+
+Tracked as [issue #25](https://github.com/ZirekHQ/dengjen-werger/issues/25).
+Done before Task 1 so that Task 1's commit — and every commit after it —
+goes through a PR against a CI check, the way every sibling repo in the org
+already works.
+
+**Files:**
+- Create: `LICENSE`
+- Create: `README.md`
+- Create: `CONTRIBUTING.md`
+- Create: `.gitignore`
+- Create: `.github/workflows/ci.yml`
+
+**Interfaces:** none — this task produces no application code.
+
+- [ ] **Step 1: Add the license**
+
+Copy `LICENSE` verbatim from `dengjen-tts` (GPL-3.0-or-later) —
+`dengjen-tts` is the closest sibling in shape (a standalone service, not an
+NVDA add-on with GPL-2.0's compatibility requirement, and not a reusable
+crate under `dengjen-tashkeel`'s MIT/Apache dual license). Do not
+retype it; copy the file byte-for-byte to avoid a subtly wrong license text.
+
+- [ ] **Step 2: Write `README.md`**
+
+```markdown
+# Dengjen Werger
+
+A commitment and peer-review layer sitting in front of Crowdin, turning
+Kurmanji translation review into a habit volunteers sustain.
+
+- **Spec:** [`docs/superpowers/specs/2026-09-11-dengjen-werger-design.md`](docs/superpowers/specs/2026-09-11-dengjen-werger-design.md)
+- **Plan:** [`docs/superpowers/plans/2026-09-11-dengjen-werger-v1.md`](docs/superpowers/plans/2026-09-11-dengjen-werger-v1.md)
+- **Contributing:** see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+
+Part of the [Sustainable Contribution](https://github.com/ZirekHQ/.github/blob/main/THEMES.md#sustainable-contribution)
+theme.
+```
+
+- [ ] **Step 3: Write `CONTRIBUTING.md`**
+
+```markdown
+# Contributing
+
+This repo follows [ZirekHQ's org-wide contribution guide](https://github.com/ZirekHQ/.github/blob/main/CONTRIBUTING.md).
+
+Repo-specific notes:
+- Read the [spec](docs/superpowers/specs/2026-09-11-dengjen-werger-design.md)
+  before picking up a story — it's the source of truth the implementation
+  plan argues from.
+- Every change lands through a PR; CI must be green before merge.
+```
+
+- [ ] **Step 4: Write `.gitignore`**
+
+```gitignore
+target/
+project/target/
+project/project/
+.bsp/
+*.class
+
+client/node_modules/
+client/dist/
+
+.env
+.env.local
+```
+
+- [ ] **Step 5: Write the CI workflow**
+
+Fetch the current release commit SHA for `actions/checkout` and a JVM setup
+action before writing this file — do not guess or reuse a SHA from memory,
+since the org's `zizmor` policy blanket-blocks any unpinned `uses:` and a
+wrong SHA fails just as hard as an unpinned one:
+
+Run: `gh api repos/actions/checkout/releases/latest --jq '.target_commitish, .tag_name'` (and the equivalent for whichever setup-java/sbt action is used), then pin the resolved commit SHA, not the tag, in the `uses:` line — matching the pattern already established in `ZirekHQ/.github`'s reusable workflow.
+
+```yaml
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<resolved-sha>  # vX.Y.Z
+      - uses: actions/setup-java@<resolved-sha>  # vX.Y.Z
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: sbt test
+```
+
+- [ ] **Step 6: Push on a branch and open a PR — do not push straight to `main`**
+
+```bash
+git checkout -b chore/repo-hygiene
+git add LICENSE README.md CONTRIBUTING.md .gitignore .github/workflows/ci.yml
+git commit -m "chore: add license, readme, contributing guide, and CI"
+git push -u origin chore/repo-hygiene
+gh pr create --title "chore: repository hygiene" --body "Closes #25." --repo ZirekHQ/dengjen-werger
+```
+
+- [ ] **Step 7: Verify the CI check actually runs and passes on the PR**
+
+Run: `gh pr checks --repo ZirekHQ/dengjen-werger --watch`
+Expected: the `build` job passes. An empty Scala project with no source
+files still needs `sbt test` to succeed (zero tests is a pass, not a
+failure) — if it isn't, fix the workflow before merging, not after.
+
+Branch protection on `main` (require PRs, require this check to pass) is a
+repo-settings change, not something this task's implementer configures —
+that's done separately, once, by whoever is driving the plan.
+
+---
+
 ### Task 1: Project scaffold with a live health check
 
 **Files:**
