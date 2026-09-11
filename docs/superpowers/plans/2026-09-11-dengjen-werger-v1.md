@@ -6,7 +6,7 @@
 
 **Architecture:** One Scala 3 service (Cats Effect 3 + http4s + Skunk, no JDBC) backed by Supabase (Postgres for domain state + TM, Auth for multi-provider sign-in), talking to Crowdin's REST API as the only v1 `TranslationSource`. Cloud Run (scale-to-zero, GraalVM native-image) hosts the service; Cloud Scheduler drives the one recurring job. A minimal Vite/TypeScript SPA is the contributor client.
 
-**Tech Stack:** Scala 3.3.4, cats-effect 3.5.4, http4s 0.23.27 (ember-server/client), Skunk 0.6.4, circe 0.14.9, jwt-scala 10.0.1, munit-cats-effect 2.0.0, Flyway (build-time migrations only, not in the native-image runtime), Vite + TypeScript for the SPA. Pin exact patch versions in `build.sbt`; check for newer compatible releases at implementation time rather than treating these as frozen.
+**Tech Stack:** Scala 3.9.0, cats-effect 3.7.1, http4s 0.23.37 (ember-server/client), Skunk 1.0.0, circe 0.14.16, jwt-scala 11.0.4, munit-cats-effect 2.2.0, Flyway (build-time migrations only, not in the native-image runtime), Vite + TypeScript for the SPA. Pin exact patch versions in `build.sbt`; check for newer compatible releases at implementation time rather than treating these as frozen.
 
 **Spec:** `docs/superpowers/specs/2026-09-11-dengjen-werger-design.md` — twice-reviewed (adversarial Claude agent, two Gemini/Antigravity passes). This plan argues from that spec; read both.
 
@@ -239,21 +239,21 @@ that's done separately, once, by whoever is driving the plan.
 - [ ] **Step 1: Write `build.sbt`**
 
 ```scala
-ThisBuild / scalaVersion := "3.3.4"
+ThisBuild / scalaVersion := "3.9.0"
 
 lazy val root = (project in file("."))
   .settings(
     name := "dengjen-werger",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-effect"         % "3.5.4",
-      "org.http4s"    %% "http4s-ember-server" % "0.23.27",
-      "org.http4s"    %% "http4s-ember-client" % "0.23.27",
-      "org.http4s"    %% "http4s-circe"        % "0.23.27",
-      "org.http4s"    %% "http4s-dsl"          % "0.23.27",
-      "io.circe"      %% "circe-generic"       % "0.14.9",
-      "org.tpolecat"  %% "skunk-core"          % "0.6.4",
-      "com.github.jwt-scala" %% "jwt-circe"    % "10.0.1",
-      "org.typelevel" %% "munit-cats-effect"   % "2.0.0" % Test
+      "org.typelevel" %% "cats-effect"         % "3.7.1",
+      "org.http4s"    %% "http4s-ember-server" % "0.23.37",
+      "org.http4s"    %% "http4s-ember-client" % "0.23.37",
+      "org.http4s"    %% "http4s-circe"        % "0.23.37",
+      "org.http4s"    %% "http4s-dsl"          % "0.23.37",
+      "io.circe"      %% "circe-generic"       % "0.14.16",
+      "org.tpolecat"  %% "skunk-core"          % "1.0.0",
+      "com.github.jwt-scala" %% "jwt-circe"    % "11.0.4",
+      "org.typelevel" %% "munit-cats-effect"   % "2.2.0" % Test
     )
   )
 ```
@@ -354,7 +354,7 @@ CREATE TABLE languages (
 
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  auth_provider_ref TEXT NOT NULL UNIQUE,
+  auth_provider_ref TEXT UNIQUE,
   role role NOT NULL DEFAULT 'contributor',
   status user_status NOT NULL DEFAULT 'active',
   timezone TEXT NOT NULL,
@@ -374,6 +374,7 @@ CREATE TABLE work_items (
   status work_item_status NOT NULL DEFAULT 'available',
   leased_by UUID REFERENCES users(id),
   lease_expires_at TIMESTAMPTZ,
+  pending_submission_id UUID,
   revision_submitter UUID REFERENCES users(id),
   revision_comment TEXT,
   revision_expires_at TIMESTAMPTZ,
@@ -388,17 +389,31 @@ CREATE TABLE submissions (
   submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE work_items
+  ADD CONSTRAINT work_items_pending_submission_fk
+  FOREIGN KEY (pending_submission_id) REFERENCES submissions(id);
+
 CREATE TABLE reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  submission_id UUID NOT NULL REFERENCES submissions(id),
+  submission_id UUID NOT NULL UNIQUE REFERENCES submissions(id),
   reviewer_id UUID NOT NULL REFERENCES users(id),
   verdict review_verdict NOT NULL,
   comment TEXT,
-  reviewed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT reviewer_not_submitter CHECK (
-    reviewer_id <> (SELECT submitter_id FROM submissions WHERE id = submission_id)
-  )
+  reviewed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE FUNCTION check_reviewer_not_submitter() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.reviewer_id = (SELECT submitter_id FROM submissions WHERE id = NEW.submission_id) THEN
+    RAISE EXCEPTION 'reviewer cannot review their own submission';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER reviews_reviewer_not_submitter
+  BEFORE INSERT ON reviews
+  FOR EACH ROW EXECUTE FUNCTION check_reviewer_not_submitter();
 
 CREATE TABLE points_ledger (
   user_id UUID NOT NULL REFERENCES users(id),
@@ -428,10 +443,20 @@ CREATE TABLE tm_segments (
 INSERT INTO languages (code, name) VALUES ('kmr', 'Kurmanji Kurdish');
 ```
 
-The `reviewer_not_submitter` check uses a subquery rather than a stored
-column so it can't drift out of sync with `submissions.submitter_id`; the
-`points_ledger` primary key is exactly the anti-farming uniqueness the spec
-requires, not a separate unique index bolted on.
+`reviewer_not_submitter` is a trigger, not a `CHECK` constraint — Postgres
+`CHECK` can't reference another table, so a cross-table subquery there
+fails at table-creation time, not at the offending insert. `reviews`'s
+`UNIQUE` on `submission_id` is what actually stops two reviewers racing on
+the same submission; the trigger only stops self-review.
+`pending_submission_id` on `work_items` records which submission is
+currently under review, set by `moveToPendingReview` — without it there's
+no way to find the active submission for dispatch after a
+`RevisionPending` resubmit. `auth_provider_ref` on `users` is nullable,
+not `NOT NULL`, because `purgePii` needs to null it out on account
+deletion; Postgres's plain `UNIQUE` already allows multiple `NULL`s, so no
+separate partial index is needed. The `points_ledger` primary key is
+exactly the anti-farming uniqueness the spec requires, not a separate
+unique index bolted on.
 
 - [ ] **Step 2: Apply it against a local/dev Supabase Postgres and verify it runs clean**
 
@@ -1021,9 +1046,15 @@ class CrowdinSource(client: CrowdinClient, fileId: Long) extends TranslationSour
     }
 
   def fetchMemory(language: Language): IO[List[TmSegment]] =
-    client.approvedTranslations(language.code, fileId).map(_.map { t =>
-      TmSegment(language.code, t.text, t.text, sourceAdapterName, java.time.Instant.now())
-    })
+    for
+      sources      <- client.sourceStrings(fileId)
+      sourceById    = sources.map(s => s.id -> s.text).toMap
+      translated   <- client.approvedTranslations(language.code, fileId)
+    yield translated.flatMap { t =>
+      sourceById.get(t.stringId).map { sourceText =>
+        TmSegment(language.code, sourceText, t.text, sourceAdapterName, java.time.Instant.now())
+      }
+    }
 
   def submit(item: WorkItem, translation: String): IO[Either[SourceError, Unit]] =
     val stringId = item.externalId.toLong
@@ -1033,11 +1064,12 @@ class CrowdinSource(client: CrowdinClient, fileId: Long) extends TranslationSour
     yield ()).attempt.map(_.left.map(e => SourceError.Transient(e.getMessage)))
 ```
 
-`fetchMemory` mapping `sourceText` and `targetText` from the same
-`CrowdinTranslation` needs revisiting once Task 7's live test confirms
-whether Crowdin's translations endpoint also returns the original source
-text or only the target — if it's target-only, join against `sourceStrings`
-by `stringId` instead. Flagged here rather than guessed at silently.
+`fetchMemory` joins each translation back to its source string by
+`stringId` rather than assuming `CrowdinTranslation.text` doubles as the
+source — Crowdin's docs don't guarantee that, and duplicating one field
+into both `sourceText` and `targetText` was silently wrong either way.
+Task 7's live test is still what confirms `CrowdinTranslation.text` itself
+holds the translated string on real Crowdin, not just in the stub.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1177,6 +1209,11 @@ class StreakCalculatorSpec extends FunSuite:
     val updated = StreakCalculator.onPeriodMet(state, LocalDate.parse("2026-09-11"))
     assertEquals(updated.current, 1)
     assertEquals(updated.longest, 5)
+
+  test("a second call for a period already met is a no-op, not a double-increment"):
+    val state = StreakState(user, current = 4, longest = 4, lastMetPeriod = Some(LocalDate.parse("2026-09-11")))
+    val updated = StreakCalculator.onPeriodMet(state, LocalDate.parse("2026-09-11"))
+    assertEquals(updated, state)
 ```
 
 ```scala
@@ -1212,9 +1249,11 @@ import werger.domain.StreakState
 
 object StreakCalculator:
   def onPeriodMet(state: StreakState, period: LocalDate): StreakState =
-    val consecutive = state.lastMetPeriod.exists(_.plusDays(1).isEqual(period)) || state.lastMetPeriod.contains(period)
-    val newCurrent = if consecutive then state.current + 1 else 1
-    state.copy(current = newCurrent, longest = state.longest.max(newCurrent), lastMetPeriod = Some(period))
+    if state.lastMetPeriod.contains(period) then state
+    else
+      val consecutive = state.lastMetPeriod.exists(_.plusDays(1).isEqual(period))
+      val newCurrent = if consecutive then state.current + 1 else 1
+      state.copy(current = newCurrent, longest = state.longest.max(newCurrent), lastMetPeriod = Some(period))
 ```
 
 ```scala
@@ -1488,9 +1527,9 @@ import skunk.implicits.*
 import werger.domain.*
 
 class ReviewRepo(pool: Resource[IO, Session[IO]]):
-  /** Fails (raises into IO) on the reviewer_not_submitter DB constraint —
+  /** Fails (raises into IO) on the reviews_reviewer_not_submitter trigger —
     * ReviewService is responsible for checking that first and returning a
-    * typed error instead of letting a constraint violation surface raw.
+    * typed error instead of letting the trigger's exception surface raw.
     */
   def insert(r: Review): IO[Unit] =
     pool.use { s =>
@@ -1538,6 +1577,13 @@ double-transitioned by a race between this task's logic and Task 11's lease
 expiry sweep. Add these three methods to `WorkItemRepo.scala` from Task 11
 following `tryLease`'s shape exactly (status-gated `UPDATE`, no
 read-then-write).
+
+This task's `review` calls `reviews.insert` and the status transition as
+two separate pooled calls, and never consults the trust gate at all —
+correct enough to get `RevisionPending` and the self-review guard under
+test, but not the final behavior. Task 14 makes the insert and transition
+one atomic operation and wires in the trust-gated Crowdin push this task
+defers.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1642,10 +1688,14 @@ git commit -m "feat: add idempotent points ledger and wire payouts into review f
 **Files:**
 - Create: `src/main/scala/werger/service/ApprovalService.scala`
 - Test: `src/test/scala/werger/service/ApprovalServiceSpec.scala`
+- Modify: `src/main/scala/werger/service/ReviewService.scala`
+- Modify: `src/main/scala/werger/adapters/db/ReviewRepo.scala`
+- Modify: `src/main/scala/werger/adapters/db/WorkItemRepo.scala`
+- Modify: `src/test/scala/werger/service/ReviewServiceSpec.scala`
 
 **Interfaces:**
-- Consumes: `TranslationSource` (Task 5, tested against a fake here — not `CrowdinSource` directly), `TrustLevel` (Task 10), `WorkItemRepo` (Task 11).
-- Produces: `ApprovalService.onApproved(item: WorkItem, submission: Submission, reviewerRole: Role, reviewerAcceptedCount: Int): IO[Unit]`.
+- Consumes: `TranslationSource` (Task 5, tested against a fake here — not `CrowdinSource` directly), `TrustLevel` (Task 10), `WorkItemRepo` (Task 11), `PointsRepo` (Task 13).
+- Produces: `ApprovalService.onApproved(item: WorkItem, submission: Submission, reviewerRole: Role, reviewerAcceptedCount: Int): IO[Unit]`. Also changes `ReviewService.review`'s signature to `(item: WorkItem, submission: Submission, reviewer: UserId, reviewerRole: Role, reviewerAcceptedCount: Int, verdict: ReviewVerdict, comment: Option[String]): IO[Either[String, Unit]]` — Task 12's version ran the review insert and the `WorkItem` transition as two separate pooled calls and never consulted the trust gate at all; this task makes them one transaction and wires the gate in.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1689,6 +1739,74 @@ class ApprovalServiceSpec extends CatsEffectSuite:
     }
 ```
 
+```scala
+package werger.service
+
+import cats.effect.{IO, Resource}
+import cats.syntax.all.*
+import munit.CatsEffectSuite
+import skunk.Session
+import werger.adapters.db.*
+import werger.domain.*
+import werger.ports.{SourceError, TranslationSource}
+
+class ReviewServiceSpec extends CatsEffectSuite:
+  class FakeSource extends TranslationSource:
+    def fetchWorkItems(l: Language) = IO.pure(Nil)
+    def fetchMemory(l: Language) = IO.pure(Nil)
+    def submit(item: WorkItem, t: String) = IO.pure(Right(()))
+
+  private def wiring(pool: Resource[IO, Session[IO]]) =
+    val (workItems, submissions, reviews, points) =
+      (new WorkItemRepo(pool), new SubmissionRepo(pool), new ReviewRepo(pool), new PointsRepo(pool))
+    val approvals = new ApprovalService(new FakeSource, workItems)
+    (workItems, submissions, new ReviewService(pool, workItems, reviews, points, approvals))
+
+  test("a reviewer cannot review their own submission"):
+    Db.pooled.use { pool =>
+      val (workItems, submissions, reviewSvc) = wiring(pool)
+      val submissionSvc = new SubmissionService(workItems, submissions)
+      val submitter = java.util.UUID.randomUUID()
+      for
+        item       <- workItems.insert(WorkItem(java.util.UUID.randomUUID(), "test", "ext-2", "kmr", "Cancel", None, WorkItemStatus.Available))
+        _          <- workItems.tryLease(item.id, submitter, java.time.Instant.now().plusSeconds(1800))
+        submission <- submissionSvc.submit(item, submitter, "Betal")
+        result     <- reviewSvc.review(item, submission, submitter, Role.Contributor, reviewerAcceptedCount = 0, ReviewVerdict.Approved, None)
+      yield assert(result.isLeft)
+    }
+
+  test("rejection moves the item to RevisionPending, not back to Available immediately"):
+    Db.pooled.use { pool =>
+      val (workItems, submissions, reviewSvc) = wiring(pool)
+      val submissionSvc = new SubmissionService(workItems, submissions)
+      val submitter = java.util.UUID.randomUUID()
+      val reviewer  = java.util.UUID.randomUUID()
+      for
+        item       <- workItems.insert(WorkItem(java.util.UUID.randomUUID(), "test", "ext-3", "kmr", "Retry", None, WorkItemStatus.Available))
+        _          <- workItems.tryLease(item.id, submitter, java.time.Instant.now().plusSeconds(1800))
+        submission <- submissionSvc.submit(item, submitter, "Dîsa")
+        _          <- reviewSvc.review(item, submission, reviewer, Role.Maintainer, reviewerAcceptedCount = 0, ReviewVerdict.Rejected, Some("wrong register"))
+        reloaded   <- workItems.find(item.id)
+      yield assert(reloaded.exists(_.status.isInstanceOf[WorkItemStatus.RevisionPending]))
+    }
+
+  test("two simultaneous reviews on the same submission: exactly one is recorded"):
+    Db.pooled.use { pool =>
+      val (workItems, submissions, reviewSvc) = wiring(pool)
+      val submissionSvc = new SubmissionService(workItems, submissions)
+      val submitter = java.util.UUID.randomUUID()
+      val (reviewerA, reviewerB) = (java.util.UUID.randomUUID(), java.util.UUID.randomUUID())
+      for
+        item       <- workItems.insert(WorkItem(java.util.UUID.randomUUID(), "test", "ext-6", "kmr", "Race", None, WorkItemStatus.Available))
+        _          <- workItems.tryLease(item.id, submitter, java.time.Instant.now().plusSeconds(1800))
+        submission <- submissionSvc.submit(item, submitter, "Pêşbirk")
+        results    <- List(reviewerA, reviewerB).parTraverse { r =>
+                        reviewSvc.review(item, submission, r, Role.Maintainer, reviewerAcceptedCount = 0, ReviewVerdict.Approved, None).attempt
+                      }
+      yield assertEquals(results.count(_.isRight), 1)
+    }
+```
+
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `sbt test`
@@ -1707,16 +1825,125 @@ import werger.ports.{SourceError, TranslationSource}
 class ApprovalService(source: TranslationSource, workItems: WorkItemRepo):
   def onApproved(item: WorkItem, submission: Submission, reviewerRole: Role, reviewerAcceptedCount: Int): IO[Unit] =
     if !TrustLevel.isTrusted(reviewerRole, reviewerAcceptedCount) then
-      workItems.markApproved(item.id)
+      IO.unit
     else
       source.submit(item, submission.proposedTranslation).flatMap {
-        case Right(())                    => workItems.markSynced(item.id)
-        case Left(_: SourceError)         => workItems.markUpstreamApprovalPending(item.id)
+        case Right(())            => workItems.markSynced(item.id)
+        case Left(_: SourceError) => workItems.markUpstreamApprovalPending(item.id)
       }
 ```
 
-Add `markSynced` and `markUpstreamApprovalPending` to `WorkItemRepo`,
-matching the status-gated `UPDATE` shape from Task 11.
+```scala
+  // additions to WorkItemRepo (Task 11)
+  def markApprovedOn(session: Session[IO])(id: WorkItemId): IO[Unit] =
+    val cmd = sql"""
+      update work_items set status = 'approved'
+      where id = $uuid and status = 'pending_review'
+    """.command
+    session.prepare(cmd).flatMap(_.execute(id)).void
+
+  def moveToRevisionPendingOn(session: Session[IO])(id: WorkItemId, submitter: UserId, comment: String, expiresAt: Instant): IO[Unit] =
+    val cmd = sql"""
+      update work_items
+      set status = 'revision_pending', revision_submitter = $uuid, revision_comment = $text, revision_expires_at = $timestamptz
+      where id = $uuid and status = 'pending_review'
+    """.command
+    session.prepare(cmd).flatMap(_.execute(submitter ~ comment ~ expiresAt ~ id)).void
+
+  def markSynced(id: WorkItemId): IO[Unit] =
+    pool.use { s =>
+      val cmd = sql"update work_items set status = 'synced' where id = $uuid and status = 'approved'".command
+      s.prepare(cmd).flatMap(_.execute(id)).void
+    }
+
+  def markUpstreamApprovalPending(id: WorkItemId): IO[Unit] =
+    pool.use { s =>
+      val cmd = sql"update work_items set status = 'upstream_approval_pending' where id = $uuid and status = 'approved'".command
+      s.prepare(cmd).flatMap(_.execute(id)).void
+    }
+```
+
+```scala
+  // addition to ReviewRepo (Task 12)
+  def insertOn(session: Session[IO])(r: Review): IO[Unit] =
+    val cmd = sql"""
+      insert into reviews (submission_id, reviewer_id, verdict, comment)
+      values ($uuid, $uuid, $text, $text.opt)
+    """.command
+    session.prepare(cmd).flatMap(_.execute(r.submission ~ r.reviewer ~ r.verdict.toString.toLowerCase ~ r.comment)).void
+```
+
+```scala
+package werger.service
+
+import cats.effect.{IO, Resource}
+import java.time.Instant
+import skunk.Session
+import werger.adapters.db.{PointsRepo, ReviewRepo, WorkItemRepo}
+import werger.domain.*
+
+class ReviewService(
+  pool: Resource[IO, Session[IO]],
+  workItems: WorkItemRepo,
+  reviews: ReviewRepo,
+  points: PointsRepo,
+  approvals: ApprovalService
+):
+  private val revisionWindowSeconds = 48L * 3600
+  private val reviewPoints = 2
+  private val approvalPoints = 10
+
+  def review(
+    item: WorkItem,
+    submission: Submission,
+    reviewer: UserId,
+    reviewerRole: Role,
+    reviewerAcceptedCount: Int,
+    verdict: ReviewVerdict,
+    comment: Option[String]
+  ): IO[Either[String, Unit]] =
+    if submission.submitter == reviewer then
+      IO.pure(Left("a reviewer cannot review their own submission"))
+    else
+      val record = Review(submission.id, reviewer, verdict, comment, Instant.now())
+      for
+        _ <- pool.use { session =>
+               session.transaction.use { _ =>
+                 reviews.insertOn(session)(record) *> (verdict match
+                   case ReviewVerdict.Approved =>
+                     workItems.markApprovedOn(session)(item.id)
+                   case ReviewVerdict.Rejected =>
+                     workItems.moveToRevisionPendingOn(session)(
+                       item.id, submission.submitter,
+                       comment.getOrElse(""), Instant.now().plusSeconds(revisionWindowSeconds)
+                     ))
+               }
+             }
+        _ <- points.award(PointsLedgerEntry(reviewer, submission.id, PointsReason.ReviewCompleted, reviewPoints, Instant.now()))
+        _ <- verdict match
+               case ReviewVerdict.Approved =>
+                 points.award(PointsLedgerEntry(submission.submitter, submission.id, PointsReason.SubmissionApproved, approvalPoints, Instant.now())) *>
+                   approvals.onApproved(item, submission, reviewerRole, reviewerAcceptedCount)
+               case ReviewVerdict.Rejected =>
+                 IO.unit
+      yield Right(())
+```
+
+`insertOn`/`markApprovedOn`/`moveToRevisionPendingOn` take an already-open
+`Session[IO]` instead of managing their own `pool.use`, so `review` can run
+the insert and the status transition inside one `session.transaction` —
+Task 12's version ran them as two independent pooled calls, so a crash
+between them (or two reviewers racing on `reviews.submission_id`, now
+`UNIQUE` per the Task 2 fix) could leave a review recorded with no matching
+status change. The existing pool-based `markApproved`/`moveToRevisionPending`
+stay as thin `pool.use(...On(_)(...))` wrappers for any other caller.
+`onApproved`'s untrusted branch is now `IO.unit`, not `workItems.markApproved`
+— the transaction above has already made that transition by the time this
+runs, so calling it again would just be a no-op against its own
+`WHERE status = 'pending_review'` guard. Finally, `review` now calls
+`approvals.onApproved` for `Approved` verdicts at all — Task 12 never wired
+`ApprovalService` in, so the trust gate and the Crowdin push it guards were
+unreachable dead code until this task.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1726,8 +1953,8 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/main/scala/werger/service/ApprovalService.scala src/main/scala/werger/adapters/db/WorkItemRepo.scala src/test/scala/werger/service/ApprovalServiceSpec.scala
-git commit -m "feat: add trust-gated Crowdin push on approval"
+git add src/main/scala/werger/service/ApprovalService.scala src/main/scala/werger/service/ReviewService.scala src/main/scala/werger/adapters/db/ReviewRepo.scala src/main/scala/werger/adapters/db/WorkItemRepo.scala src/test/scala/werger/service/ApprovalServiceSpec.scala src/test/scala/werger/service/ReviewServiceSpec.scala
+git commit -m "feat: add trust-gated Crowdin push, wired atomically into review"
 ```
 
 ---

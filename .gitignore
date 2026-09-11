@@ -11,3 +11,4 @@ client/dist/
 .env.local
 
 .worktrees/
+.idea
