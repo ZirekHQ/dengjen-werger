@@ -1,1 +1,11 @@
-.worktrees/
+target/
+project/target/
+project/project/
+.bsp/
+*.class
+
+client/node_modules/
+client/dist/
+
+.env
+.env.local
