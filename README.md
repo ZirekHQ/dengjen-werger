@@ -44,13 +44,13 @@ design spec's Anti-abuse section for how that gate resists gaming.
 
 ## Roadmap
 
-| Milestone | Ships | Status |
-|---|---|---|
-| Scaffold | sbt project, CI (build, test, Sonar, zizmor), a `/healthz` route | Done |
-| v1: Kurmanji × Crowdin | Full commitment/review/points/streak/leaderboard loop, Crowdin adapter, synced translation memory, anti-abuse controls | Planned |
+| Milestone                            | Ships                                                                                                                                    | Status  |
+|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| Scaffold                             | sbt project, CI (build, test, Sonar, zizmor), a `/healthz` route                                                                         | Done    |
+| v1: Kurmanji × Crowdin               | Full commitment/review/points/streak/leaderboard loop, Crowdin adapter, synced translation memory, anti-abuse controls                   | Planned |
 | Phase 2: NVDA OmegaT glossary source | Ingress adapter for `nvda-omegat`'s character-description and symbol-dictionary CSVs — a contributor-facing gap no CAT tool covers today | Planned |
-| Phase 3+: More platforms | Adapters for Launchpad, GNOME, KDE, and Mozilla Pontoon, each contingent on that platform accepting automated contributions | Future |
-| Beyond v1 | Languages beyond Kurmanji; the same commitment loop applied to translation work outside NVDA and accessibility | Vision |
+| Phase 3+: More platforms             | Adapters for Launchpad, GNOME, KDE, and Mozilla Pontoon, each contingent on that platform accepting automated contributions              | Future  |
+| Beyond v1                            | Languages beyond Kurmanji; the same commitment loop applied to translation work outside NVDA and accessibility                           | Vision  |
 
 Details and open questions for each stage live in the spec and plan linked
 below.
@@ -60,7 +60,7 @@ below.
 Prerequisites:
 
 - JDK 21
-- sbt (this repo pins `sbt.version=1.9.9` in `project/build.properties`;
+- sbt (this repo pins `sbt.version=1.13.0` in `project/build.properties`;
   any recent sbt launcher fetches it automatically)
 
 Run the scaffold:
