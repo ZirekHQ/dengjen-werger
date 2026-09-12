@@ -1,0 +1,45 @@
+= Dengjen Werger
+
+Volunteer translation doesn't fail for lack of a translation tool -- it fails because
+volunteers don't sustain time commitment over months or years. Dengjen Werger is a
+commitment and peer-review layer that sits in front of existing translation platforms
+and turns a one-time favor into a habit: a personal time pledge, reminders, mandatory
+peer review, points, streaks, and a leaderboard.
+
+It's for contributors who want structure and accountability around volunteer
+translation work, and for reviewers and maintainers who need confidence that a live
+translation was actually checked by someone with standing to check it -- not just
+typed once and shipped.
+
+The initial target is translation for accessibility tooling that visually impaired
+users depend on, starting with Kurmanji-language strings for the NVDA screen reader on
+Crowdin. `Language` is a first-class field throughout the domain model, and
+translation platforms are integrated through one `TranslationSource` port, so later
+work can point the same commitment and review loop at other languages, other
+platforms, and apps beyond NVDA without a rewrite.
+
+== How it works
+
+. *Onboarding* -- pick a language, a commitment tier (Light/Medium/Heavy), and a
+  timezone.
+. *Reminders* -- a scheduled job checks recorded progress against the tier's quota and
+  emails a nudge only when a contributor is falling behind.
+. *Submission* -- translating a work item creates a submission and a provisional
+  points entry, held pending review.
+. *Review* -- another contributor claims the next queued item (first-in-first-out, not
+  hand-picked) and approves or rejects it. Reviewing earns points immediately;
+  approving pays out the submitter's points and updates their streak.
+. *Leaderboard* -- ranked by confirmed points, per language.
+
+No submission ships to the source platform without passing review.
+
+== Status
+
+This project is at the scaffold stage: an sbt project with CI and a `/healthz` route.
+The full commitment/review/points/streak/leaderboard loop is planned for v1. See the
+https://github.com/ZirekHQ/dengjen-werger[repository] for the design spec,
+implementation plan, and current progress.
+
+== License
+
+Licensed under the GNU General Public License Version 3 or later (GPL-3.0-or-later).

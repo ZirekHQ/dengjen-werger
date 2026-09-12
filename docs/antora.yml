@@ -1,0 +1,5 @@
+name: dengjen-werger
+title: dengjen-werger
+version: true
+nav:
+  - modules/ROOT/nav.adoc
