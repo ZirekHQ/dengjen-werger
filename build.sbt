@@ -2,6 +2,10 @@ ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 
+addCommandAlias("lint", ";scalafmtCheckAll;scalafixAll --check")
+addCommandAlias("fix", ";scalafmtAll;scalafixAll")
+addCommandAlias("prep", ";fix;test")
+
 lazy val IntegrationTest = config("it") extend Test
 lazy val E2e = config("e2e") extend Test
 
@@ -14,4 +18,8 @@ lazy val root = (project in file("."))
     scalafixConfigSettings(IntegrationTest),
     scalafixConfigSettings(E2e),
     libraryDependencies ++= Dependencies.all,
+    coverageMinimumStmtTotal := 80,
+    coverageFailOnMinimum := true,
+    coverageExcludedPackages := "werger\\.Main",
+    coverageExcludedFiles := ".*/adapters/db/Db",
   )
