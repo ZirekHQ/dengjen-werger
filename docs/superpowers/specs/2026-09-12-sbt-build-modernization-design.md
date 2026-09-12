@@ -10,11 +10,14 @@ spec closes the remaining gaps against the Typelevel/OSS baseline (cats-effect,
 http4s, skunk stack): compiler hygiene, coverage, packaging for Cloud Run,
 build metadata, dependency layout, and developer ergonomics.
 
-Baseline measured on this branch before any change: 18 instrumented
-statements, 22.22% statement coverage, all of it in `Main.scala` (0%),
-`Db.scala` (0%), and `Routes.scala` (100%). `CrowdinCodecs.scala`,
-`Model.scala`, and `TranslationSource.scala` are declarative-only (case
-classes, given instances) and contribute no instrumented statements.
+Baseline measured on this branch: 30 instrumented statements, 46.67%
+statement coverage — `Main.scala` 0/3, `Db.scala` 10/23 (43%, via
+`DbSpec`'s test of `buildPooled`'s missing-var failure path), `Routes.scala`
+4/4 (100%). `CrowdinCodecs.scala`, `Model.scala`, and
+`TranslationSource.scala` are declarative-only (case classes, given
+instances) and contribute no instrumented statements. `Db.scala` was
+reworked (and `DbPoolingSpec` moved to the `it` tier) while this spec was
+being drafted; §2 below builds on that shape rather than replacing it.
 
 ## Goals
 
@@ -63,27 +66,41 @@ coverageExcludedPackages := "werger\\.Main"
 coverageExcludedFiles := ".*/adapters/db/Db\\.scala"
 ```
 
-`Db.scala` currently reads `sys.env("DB_HOST")` etc. eagerly at object
-construction, which throws in any process without DB creds set, and builds
-the Skunk pool in the same expression — neither is unit-testable without a
-live database. Extract the parsing into a new, separate file,
-`DbConfig.scala`, as a pure, testable unit:
+`Db.scala` already parameterizes `buildPooled` over a
+`lookup: String => Option[String]` and validates required vars through
+`required` before ever touching `Session.Builder` — that's why the
+missing-var path is unit-testable today (`DbSpec`). But `required`'s
+validation and the `Session.Builder...pooled(...)` call still live in one
+function in one file, so hitting 80% without excluding `Db.scala`
+wholesale would mean exercising ~92% of it — which means actually
+allocating the Skunk pool, i.e. a live DB.
+
+Split the file instead:
 
 ```scala
+// DbConfig.scala — pure, no DB dependency
 final case class DbConfig(host: String, port: Int, user: String, password: String, database: String)
 
 object DbConfig:
-  def fromEnv(lookup: String => Option[String] = sys.env.get): Either[String, DbConfig] = ...
+  def fromEnv(lookup: String => Option[String]): IO[DbConfig] = ...  // same required()-style validation as today
 ```
 
-`Db.scala` itself shrinks to a thin function from `DbConfig` to the Skunk
-`Resource` chain — it stays excluded from coverage in its entirety (it
-needs a live DB to mean anything; that's what the existing IT-tagged
-`DbPoolingSpec` covers). `DbConfig.scala` is a separate file, not covered
-by the exclusion, and is fully unit-tested with no DB dependency. With
-`Routes` already at 100% and `DbConfig.fromEnv` tested, both `Main` and
-`Db` are out of the 80% denominator and the gate is achievable without
-padding.
+```scala
+// Db.scala — thin, excluded from coverage
+object Db:
+  def buildPooled(config: DbConfig): Resource[IO, Resource[IO, Session[IO]]] = ...
+  val pooled: Resource[IO, Resource[IO, Session[IO]]] =
+    Resource.eval(DbConfig.fromEnv(sys.env.get)).flatMap(buildPooled)
+```
+
+`DbSpec`'s existing missing-var test moves to `DbConfigSpec` (same
+assertion, now against `DbConfig.fromEnv`); add the all-present-vars case
+there too, still with no DB dependency. `Db.scala` — now only the
+Skunk-connection call — stays excluded from coverage in its entirety; the
+existing IT-tagged `DbPoolingSpec` continues to cover it against a live
+database. With `Routes` at 100% and `DbConfig.fromEnv` fully tested, both
+`Main` and `Db` are out of the 80% denominator and the gate is achievable
+without padding.
 
 CI wiring:
 - `ci.yml`'s test step becomes `sbt coverage test coverageReport` (fails
@@ -114,14 +131,16 @@ hand-written Dockerfile.
 Add `sbt-buildinfo`, enabled on `root`:
 
 ```scala
-buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, gitCommit)
-buildInfoPackage := "werger"
-
-lazy val gitCommit = Def.setting {
+def gitCommit: String =
   sys.env.get("GITHUB_SHA").map(_.take(7)).orElse(
     scala.util.Try(scala.sys.process.Process("git rev-parse --short HEAD").!!.trim).toOption
   ).getOrElse("unknown")
-}
+
+buildInfoKeys := Seq[BuildInfoKey](
+  name, version, scalaVersion,
+  BuildInfoKey.action("gitCommit")(gitCommit)
+)
+buildInfoPackage := "werger"
 ```
 
 `GITHUB_SHA` is checked first because it's already present in CI without
@@ -208,8 +227,9 @@ step splits into two: `sbt coverage test coverageReport` (§2) and
 
 ## Testing
 
-- `DbConfig.fromEnv` — unit-tested: all-present, each-missing, invalid
-  port, default port fallback.
+- `DbConfigSpec` (renamed from `DbSpec`) — `DbConfig.fromEnv`: all-present,
+  each-missing (the existing case, moved), invalid port, default port
+  fallback.
 - `RoutesSpec` — updated to decode `HealthStatus` JSON.
 - No new integration/e2e tests required; `DbPoolingSpec` already covers
   the excluded pool-building path.

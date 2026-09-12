@@ -9,7 +9,7 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  build:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -21,6 +21,18 @@ jobs:
           java-version: "25"
       - uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8  # v1.5.9
       - run: sbt --allow-empty test scalafmtCheckAll "scalafixAll --check"
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6  # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8  # v1.5.9
+      - run: sbt --allow-empty "IntegrationTest / test"
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
