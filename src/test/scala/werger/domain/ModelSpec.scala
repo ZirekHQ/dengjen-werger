@@ -1,8 +1,9 @@
 package werger.domain
 
+import munit.FunSuite
+
 import java.time.Instant
 import java.util.UUID
-import munit.FunSuite
 
 class ModelSpec extends FunSuite:
   test("WorkItemStatus.InProgress carries the leaseholder and expiry, not a bare flag"):
