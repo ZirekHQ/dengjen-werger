@@ -1,6 +1,10 @@
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
+ThisBuild / dynverSeparator := "-"
+ThisBuild / organization := "org.zirekhq"
+ThisBuild / homepage := Some(url("https://github.com/ZirekHQ/dengjen-werger"))
+ThisBuild / licenses := List("GPL-3.0-or-later" -> url("https://www.gnu.org/licenses/gpl-3.0.html"))
 
 addCommandAlias("lint", ";scalafmtCheckAll;scalafixAll --check")
 addCommandAlias("fix", ";scalafmtAll;scalafixAll")
