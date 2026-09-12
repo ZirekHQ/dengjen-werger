@@ -1,7 +1,6 @@
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
-ThisBuild / scalacOptions += "-Wunused:all"
 
 lazy val IntegrationTest = config("it") extend Test
 lazy val E2e = config("e2e") extend Test
