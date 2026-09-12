@@ -21,35 +21,55 @@ forward unless the tiers are separated now.
 
 | Tier | Definition | Directory | sbt command |
 |---|---|---|---|
-| Unit | Pure functions, or I/O stubbed in-process (in-memory http4s routes) — no real network or database | `src/test/scala` | `sbt test` |
-| Integration | Real infrastructure this project controls — the dev Supabase Postgres via Supavisor | `src/it/scala` | `sbt it:test` |
-| E2E | Live third-party services (the real Crowdin API), or the fully deployed system | `src/e2e/scala` | `sbt e2e:test` |
+| Unit | Pure functions, or I/O stubbed in-process (in-memory http4s routes) — no real network or database | `src/test/scala` | `sbt test` (`Test / test`) |
+| Integration | Real infrastructure this project controls — the dev Supabase Postgres via Supavisor | `src/it/scala` | `sbt it:test` (`IntegrationTest / test`) |
+| E2E | Live third-party services (the real Crowdin API), or the fully deployed system | `src/e2e/scala` | `sbt e2e:test` (`E2e / test`) |
 
-Each mirrors the `werger.*` package structure of `src/main/scala`.
+Each mirrors the `werger.*` package structure of `src/main/scala`. The
+parenthesized form is sbt's modern slash syntax; the colon form still works
+and is what's used inline through this doc, but `CONTRIBUTING.md` records
+both.
 
 ### sbt wiring
 
+sbt 1.9 deprecated the built-in `IntegrationTest` configuration and
+`Defaults.itSettings` in favor of either a dedicated subproject or a
+custom configuration — using the built-in as originally drafted here would
+build clean today but print deprecation warnings on this project's sbt
+1.13, and disappears entirely in sbt 2.x. A subproject is unnecessary
+weight for two extra test source sets in one small service, so both tiers
+are defined the same way `E2e` already was: custom configurations that
+`extend Test`, wired with the generic `Defaults.testSettings` rather than
+the deprecated `Defaults.itSettings`. `extend Test` also gives both tiers
+the `Test` classpath automatically (the built-in `IntegrationTest`
+extends `Runtime` instead, which would otherwise hide any shared test
+fixtures under `src/test/scala` from `src/it/scala`). Scalafix only
+attaches to `Compile` and `Test` unless told otherwise, so both new
+configs need an explicit `scalafixConfigSettings(...)` line or
+`scalafixAll`/`scalafixAll --check` in CI silently skips them.
+
 ```scala
+lazy val IntegrationTest = config("it") extend Test
 lazy val E2e = config("e2e") extend Test
 
 lazy val root = (project in file("."))
   .configs(IntegrationTest, E2e)
   .settings(
-    Defaults.itSettings,
+    inConfig(IntegrationTest)(Defaults.testSettings),
     inConfig(E2e)(Defaults.testSettings),
+    scalafixConfigSettings(IntegrationTest),
+    scalafixConfigSettings(E2e),
     libraryDependencies ++= Seq(
       // ...existing dependencies...
-      "org.typelevel" %% "munit-cats-effect" % "2.2.0" % "it,test"
+      "org.typelevel" %% "munit-cats-effect" % "2.2.0" % "it,e2e,test"
     )
   )
 ```
 
-`IntegrationTest` is sbt's built-in second test configuration; `Defaults.itSettings`
-gives it its own source directory and classpath. It does not automatically
-inherit `Test`-scoped dependencies, so shared test dependencies are scoped
-`"it,test"` explicitly. `E2e` is a custom configuration that `extend`s `Test`,
-which means it inherits `Test`'s classpath (including munit) without a
-separate scoping entry.
+Since both configs now `extend Test`, `munit-cats-effect` scoped to
+`"it,e2e,test"` is technically redundant with `Test`'s own inherited
+classpath — kept explicit anyway so the dependency list states what each
+tier needs without relying on a reader tracing the `extend` chain.
 
 ### Credential guard, unchanged
 
@@ -81,12 +101,23 @@ the guard.
 
 ### CI
 
-`.github/workflows/ci.yml` splits its one step into two jobs:
+`.github/workflows/ci.yml` splits its one step into two jobs, run
+concurrently (no `needs` between them) for the fastest PR feedback;
+branch protection requiring both checks is what actually enforces that
+both pass before merge, not job ordering:
 
 - `unit`: `sbt test scalafmtCheckAll "scalafixAll --check"` — no `DB_*`
-  secrets needed once `DbPoolingSpec` moves out of this tier.
+  secrets needed once `DbPoolingSpec` moves out of this tier. This one
+  `scalafixAll --check`/`scalafmtCheckAll` call still covers `Compile`,
+  `Test`, and (once configured above) `IntegrationTest`/`E2e` — formatting
+  and lint checks aren't split per job the way test execution is.
 - `integration`: `sbt it:test`, with the `DB_*` secrets already configured
-  in the repo (moved from the old combined step, not newly added).
+  in the repo (moved from the old combined step, not newly added). GitHub
+  Actions doesn't expose repository secrets to workflows triggered by a
+  pull request from a fork, so on a fork PR this job runs with `DB_*`
+  unset — exactly the case the credential guard exists for: the job still
+  passes, its test reporting "skipped," rather than failing on missing
+  secrets it was never going to have.
 
 No `e2e` CI job. E2E tests run manually via `sbt e2e:test` with
 `CROWDIN_TEST_TOKEN`/`CROWDIN_TEST_STRING_ID`, documented in
