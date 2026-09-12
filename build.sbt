@@ -1,3 +1,5 @@
+import com.typesafe.sbt.packager.docker.{Cmd, DockerPlugin}
+
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
@@ -14,6 +16,7 @@ lazy val IntegrationTest = config("it") extend Test
 lazy val E2e = config("e2e") extend Test
 
 lazy val root = (project in file("."))
+  .enablePlugins(JavaAppPackaging, DockerPlugin)
   .configs(IntegrationTest, E2e)
   .settings(
     name := "dengjen-werger",
@@ -26,4 +29,13 @@ lazy val root = (project in file("."))
     coverageFailOnMinimum := true,
     coverageExcludedPackages := "werger\\.Main",
     coverageExcludedFiles := ".*/adapters/db/Db",
+    Compile / mainClass := Some("werger.Main"),
+    dockerBaseImage := "eclipse-temurin:21-jre-alpine",
+    dockerExposedPorts := Seq(8080),
+    dockerUpdateLatest := true,
+    // JavaAppPackaging's launch script is bash, which the alpine base doesn't ship.
+    dockerCommands := dockerCommands.value.flatMap {
+      case cmd @ Cmd("FROM", _*) => List(cmd, Cmd("RUN", "apk", "add", "--no-cache", "bash"))
+      case other                 => List(other)
+    },
   )
