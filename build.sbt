@@ -15,8 +15,13 @@ addCommandAlias("prep", ";fix;test")
 lazy val IntegrationTest = config("it") extend Test
 lazy val E2e = config("e2e") extend Test
 
+def gitCommit: String =
+  sys.env.get("GITHUB_SHA").map(_.take(7)).orElse(
+    scala.util.Try(scala.sys.process.Process("git rev-parse --short HEAD").!!.trim).toOption
+  ).getOrElse("unknown")
+
 lazy val root = (project in file("."))
-  .enablePlugins(JavaAppPackaging, DockerPlugin)
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
   .configs(IntegrationTest, E2e)
   .settings(
     name := "dengjen-werger",
@@ -30,6 +35,11 @@ lazy val root = (project in file("."))
     coverageExcludedPackages := "werger\\.Main",
     coverageExcludedFiles := ".*/adapters/db/Db",
     Compile / mainClass := Some("werger.Main"),
+    buildInfoKeys := Seq[BuildInfoKey](
+      name, version, scalaVersion,
+      BuildInfoKey.action("gitCommit")(gitCommit)
+    ),
+    buildInfoPackage := "werger",
     dockerBaseImage := "eclipse-temurin:21-jre-alpine",
     dockerExposedPorts := Seq(8080),
     dockerUpdateLatest := true,
