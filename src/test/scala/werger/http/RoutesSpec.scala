@@ -16,6 +16,6 @@ class RoutesSpec extends CatsEffectSuite:
     Routes.app.orNotFound
       .run(req)
       .flatMap { r =>
-        r.as[HealthStatus].map(b => (r.status, b.status))
+        r.as[HealthStatus].map(b => (r.status, b.status, b.version.nonEmpty, b.commit.nonEmpty))
       }
-      .assertEquals((Status.Ok, "ok"))
+      .assertEquals((Status.Ok, "ok", true, true))
