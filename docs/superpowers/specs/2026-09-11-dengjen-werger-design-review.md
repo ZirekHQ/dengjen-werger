@@ -1,6 +1,6 @@
 # Design Spec Review (v2): Dengjen Werger
 
-**Target Document:** [`2026-09-11-dengjen-werger-design.md`](file:///home/ali/Workspace/zirekhq/dengjen-werger/docs/superpowers/specs/2026-09-11-dengjen-werger-design.md)  
+**Target Document:** [`2026-09-11-dengjen-werger-design.md`](2026-09-11-dengjen-werger-design.md)  
 **Date of Review:** 2026-09-11  
 **Review Iteration:** 2 (incorporating adversarial review convergence and expanded spec)  
 **Reviewer:** Antigravity / DeepMind Pair Programmer

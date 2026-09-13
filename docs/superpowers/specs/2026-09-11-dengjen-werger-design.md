@@ -286,12 +286,12 @@ volunteer-scale project.
    sends a reminder email (via the named transactional provider) if behind.
    No reminder if on track or ahead.
 3. **Submission**: translating a `WorkItem` (after leasing it, see Domain
-   model) creates a `Submission` and a provisional `PointsLedgerEntry`, held
-   pending review.
+   model) creates a `Submission`, held pending review. No `PointsLedgerEntry`
+   exists yet — points are awarded only on approval (see Approval).
 4. **Review**: any other, non-suspended user may claim the next queued item
    (blind dispatch) and approve or reject. Reviewing itself earns points
    immediately — see Anti-abuse for why this is safe against farming.
-5. **Approval**: submitter's provisional points confirm, their streak
+5. **Approval**: submitter's `PointsLedgerEntry` is created, their streak
    updates for the current period, and — subject to the reviewer's trust
    level — the `TranslationSource.submit` call fires.
 6. **Rejection**: no points awarded; the item moves to `RevisionPending`,

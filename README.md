@@ -75,7 +75,7 @@ Confirm it's serving:
 curl localhost:8080/healthz
 ```
 
-The command prints `ok`.
+The command prints a JSON body: `{"status":"ok","version":"...","commit":"...","builtAt":"..."}`.
 
 Run the test suite:
 
