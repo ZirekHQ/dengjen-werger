@@ -20,8 +20,8 @@ class DraftCreditSpec extends FunSuite:
     )
 
   test("whitespace and Unicode normalization differences alone don't count as an edit"):
-    val precomposed = "Têmam" // "ê" as a single code point
-    val decomposed = "Têmam" // "e" + combining circumflex, same rendered text
+    val precomposed = "Têmam" // U+00EA (precomposed ê as single code point)
+    val decomposed = "Têmam" // U+0065 (e) + U+0302 (combining circumflex)
     assertEquals(
       DraftCredit.pointsReasonFor(s"  $decomposed  ", Some(precomposed), matchThreshold = 1.0),
       PointsReason.DraftConfirmed
