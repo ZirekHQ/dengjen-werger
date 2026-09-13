@@ -71,7 +71,7 @@ final case class Review(
 )
 
 enum PointsReason:
-  case SubmissionApproved, ReviewCompleted
+  case SubmissionApproved, ReviewCompleted, DraftConfirmed
 
 final case class PointsLedgerEntry(
     user: UserId,
