@@ -44,16 +44,8 @@ design spec's Anti-abuse section for how that gate resists gaming.
 
 ## Roadmap
 
-| Milestone                            | Ships                                                                                                                                    | Status  |
-|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| Scaffold                             | sbt project, CI (build, test, Sonar, zizmor), a `/healthz` route                                                                         | Done    |
-| v1: Kurmanji × Crowdin               | Full commitment/review/points/streak/leaderboard loop, Crowdin adapter, synced translation memory, anti-abuse controls                   | Planned |
-| Phase 2: NVDA OmegaT glossary source | Ingress adapter for `nvda-omegat`'s character-description and symbol-dictionary CSVs — a contributor-facing gap no CAT tool covers today | Planned |
-| Phase 3+: More platforms             | Adapters for Launchpad, GNOME, KDE, and Mozilla Pontoon, each contingent on that platform accepting automated contributions              | Future  |
-| Beyond v1                            | Languages beyond Kurmanji; the same commitment loop applied to translation work outside NVDA and accessibility                           | Vision  |
-
-Details and open questions for each stage live in the spec and plan linked
-below.
+See [`ROADMAP.md`](ROADMAP.md) for current milestone status. Details and
+open questions for each stage live in the spec and plan linked below.
 
 ## Getting started
 
@@ -85,9 +77,11 @@ sbt test
 
 ## Docs
 
+- **Architecture:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- **Roadmap:** [`ROADMAP.md`](ROADMAP.md)
 - **Spec:** [`docs/superpowers/specs/2026-09-11-dengjen-werger-design.md`](docs/superpowers/specs/2026-09-11-dengjen-werger-design.md)
 - **Plan:** [`docs/superpowers/plans/2026-09-11-dengjen-werger-v1.md`](docs/superpowers/plans/2026-09-11-dengjen-werger-v1.md)
-- **Contributing:** see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- **Contributing:** see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)
 - **License:** [GPL-3.0-or-later](LICENSE)
 
 Part of the [Sustainable Contribution](https://github.com/ZirekHQ/.github/blob/main/THEMES.md#sustainable-contribution)
