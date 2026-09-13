@@ -1,6 +1,7 @@
 package werger.adapters.googletranslate
 
 import cats.effect.IO
+import io.circe.parser.*
 import munit.CatsEffectSuite
 import org.http4s.*
 import org.http4s.client.Client
@@ -13,8 +14,20 @@ class GoogleTranslateSourceSpec extends CatsEffectSuite:
   private val kurmanji = Language("kmr", "Kurmanji Kurdish")
 
   test("translateBatch maps each source text to its translation"):
-    val stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
-      Ok("""{"data":{"translations":[{"translatedText":"Temam"},{"translatedText":"Na"}]}}""")
+    val stub = HttpRoutes.of[IO] { case req @ POST -> Root / "language" / "translate" / "v2" :? _ =>
+      req.as[String].flatMap { body =>
+        parse(body) match
+          case Right(json) =>
+            json.hcursor.get[String]("target") match
+              case Right("ku") =>
+                Ok("""{"data":{"translations":[{"translatedText":"Temam"},{"translatedText":"Na"}]}}""")
+              case Right(other) =>
+                BadRequest(s"""{"error":{"code":400,"message":"expected target='ku' but got '$other'"}}""")
+              case Left(_) =>
+                BadRequest("""{"error":{"code":400,"message":"missing target field"}}""")
+          case Left(_) =>
+            BadRequest("""{"error":{"code":400,"message":"invalid json"}}""")
+      }
     }.orNotFound
     val source = new GoogleTranslateSource(new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key"))
     source.translateBatch(kurmanji, List("OK", "No")).assertEquals(Right(Map("OK" -> "Temam", "No" -> "Na")))
