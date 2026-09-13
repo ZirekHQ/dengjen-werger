@@ -27,7 +27,7 @@ class DraftCreditSpec extends FunSuite:
       PointsReason.DraftConfirmed
     )
 
-  test("a raised threshold tolerates a small edit as still-confirmed"):
+  test("a lowered threshold tolerates a small edit as still-confirmed"):
     assertEquals(
       DraftCredit.pointsReasonFor("Temam.", Some("Temam"), matchThreshold = 0.8),
       PointsReason.DraftConfirmed

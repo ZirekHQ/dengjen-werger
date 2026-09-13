@@ -59,3 +59,13 @@ class GoogleTranslateSourceSpec extends CatsEffectSuite:
       case Left(_: MtError.Transient) => true
       case _ => false
     }.assertEquals(true)
+
+  test("translateBatch maps a 200 response with an unexpected shape to Unsupported"):
+    val stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
+      Ok("""{"unexpected": "shape"}""")
+    }.orNotFound
+    val source = new GoogleTranslateSource(new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key"))
+    source.translateBatch(kurmanji, List("OK")).map {
+      case Left(_: MtError.Unsupported) => true
+      case _ => false
+    }.assertEquals(true)

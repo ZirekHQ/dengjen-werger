@@ -1,6 +1,6 @@
 package werger.adapters.googletranslate
 
-import cats.effect.IO
+import cats.effect.{IO, Ref}
 import munit.CatsEffectSuite
 import org.http4s.*
 import org.http4s.client.Client
@@ -16,13 +16,37 @@ class GoogleTranslateClientSpec extends CatsEffectSuite:
     client.translate(List("OK", "No"), targetLanguageCode = "ku").assertEquals(Map("OK" -> "Temam", "No" -> "Na"))
 
   test("translate splits requests larger than chunkSize into multiple calls"):
-    var calls = 0
-    val stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
-      calls += 1
-      Ok("""{"data":{"translations":[{"translatedText":"x"}]}}""")
+    for
+      calls <- Ref.of[IO, Int](0)
+      stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
+        calls.update(_ + 1) *> Ok("""{"data":{"translations":[{"translatedText":"x"}]}}""")
+      }.orNotFound
+      client = new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key", chunkSize = 1)
+      _ <- client.translate(List("a", "b", "c"), targetLanguageCode = "ku")
+      count <- calls.get
+    yield assertEquals(count, 3)
+
+  test("translate sends the api key as a header, never in the request URI"):
+    for
+      capturedUri <- Ref.of[IO, Option[Uri]](None)
+      stub = HttpRoutes.of[IO] { case req @ POST -> Root / "language" / "translate" / "v2" :? _ =>
+        capturedUri.set(Some(req.uri)) *> Ok("""{"data":{"translations":[{"translatedText":"Temam"}]}}""")
+      }.orNotFound
+      client = new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "super-secret-key")
+      _ <- client.translate(List("OK"), targetLanguageCode = "ku")
+      uri <- capturedUri.get
+    yield assert(!uri.exists(_.toString.contains("key=")), s"api key leaked into request URI: $uri")
+
+  test("a chunk with fewer translations than requested texts is treated as failed, other chunks unaffected"):
+    val stub = HttpRoutes.of[IO] {
+      case req @ POST -> Root / "language" / "translate" / "v2" :? _ =>
+        req.as[String].flatMap { raw =>
+          if raw.contains("\"a\"") then Ok("""{"data":{"translations":[{"translatedText":"x"}]}}""")
+          else Ok("""{"data":{"translations":[]}}""") // fewer translations than the 1 requested text
+        }
     }.orNotFound
     val client = new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key", chunkSize = 1)
-    client.translate(List("a", "b", "c"), targetLanguageCode = "ku").map(_ => calls).assertEquals(3)
+    client.translate(List("a", "b"), targetLanguageCode = "ku").assertEquals(Map("a" -> "x"))
 
   test("a failed chunk doesn't discard another chunk's already-succeeded translations"):
     val stub = HttpRoutes.of[IO] {

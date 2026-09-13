@@ -1,6 +1,7 @@
 package werger.adapters.googletranslate
 
 import cats.effect.IO
+import org.http4s.InvalidMessageBodyFailure
 import org.http4s.client.UnexpectedStatus
 import werger.domain.Language
 import werger.ports.{MachineTranslationSource, MtError}
@@ -27,6 +28,8 @@ class GoogleTranslateSource(
               Left(MtError.Unsupported(s"Google Translate rejected the request: $status"))
             case UnexpectedStatus(status, _, _) =>
               Left(MtError.Transient(s"Google Translate returned $status"))
+            case e: InvalidMessageBodyFailure =>
+              Left(MtError.Unsupported(s"Google Translate response didn't match the expected shape: ${e.getMessage}"))
             case e: Throwable =>
               Left(MtError.Transient(e.getMessage))
           }
