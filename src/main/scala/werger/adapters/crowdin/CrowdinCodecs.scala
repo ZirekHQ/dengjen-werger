@@ -14,3 +14,7 @@ object CrowdinTranslation:
 final case class CrowdinCreatedTranslation(id: Long)
 object CrowdinCreatedTranslation:
   given Decoder[CrowdinCreatedTranslation] = deriveDecoder
+
+final case class CrowdinApproval(translationId: Long)
+object CrowdinApproval:
+  given Decoder[CrowdinApproval] = deriveDecoder
