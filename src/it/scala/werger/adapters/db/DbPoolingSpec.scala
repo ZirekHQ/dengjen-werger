@@ -7,10 +7,8 @@ import skunk.codec.all.*
 import skunk.implicits.*
 
 class DbPoolingSpec extends CatsEffectSuite:
-  // Db reads DB_HOST etc. from sys.env; without it set, this needs to skip
-  // cleanly (a fork PR gets no repository secrets, and a local run may have
-  // none either) rather than fail on a suite that was never going to have
-  // what it needs.
+  // Skips instead of failing when Postgres creds are absent — this
+  // integration test may run without them locally or on a fork PR.
   sys.env.get("DB_HOST") match
     case Some(_) =>
       test("running the same query many times over a small pool doesn't hit a stale prepared statement"):
