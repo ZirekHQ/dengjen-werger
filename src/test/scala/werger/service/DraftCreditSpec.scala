@@ -32,3 +32,9 @@ class DraftCreditSpec extends FunSuite:
       DraftCredit.pointsReasonFor("Temam.", Some("Temam"), matchThreshold = 0.8),
       PointsReason.DraftConfirmed
     )
+
+  test("an out-of-range matchThreshold is rejected rather than silently mis-scoring every submission"):
+    val _ =
+      intercept[IllegalArgumentException](DraftCredit.pointsReasonFor("Temam", Some("Temam"), matchThreshold = -1.0))
+    val _ =
+      intercept[IllegalArgumentException](DraftCredit.pointsReasonFor("Temam", Some("Temam"), matchThreshold = 1.5))

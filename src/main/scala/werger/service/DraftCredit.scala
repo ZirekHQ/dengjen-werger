@@ -14,6 +14,10 @@ object DraftCredit:
       draftAtSubmission: Option[String],
       matchThreshold: Double
   ): PointsReason =
+    require(
+      matchThreshold >= 0.0 && matchThreshold <= 1.0,
+      s"matchThreshold must be within [0.0, 1.0], got $matchThreshold"
+    )
     val confirmed = draftAtSubmission.exists(draft => similarity(proposedTranslation, draft) >= matchThreshold)
     if confirmed then PointsReason.DraftConfirmed else PointsReason.SubmissionApproved
 
