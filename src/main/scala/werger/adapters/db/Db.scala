@@ -18,5 +18,7 @@ object Db:
       .withTypingStrategy(skunk.TypingStrategy.SearchPath)
       .pooled(max = 8)(using Tracer.Implicits.noop[IO])
 
+  // DbConfig.fromEnv only reads env vars once this Resource is used, so a missing var
+  // surfaces as a normal IO failure (catchable via .attempt), not a fatal Error at object-init.
   val pooled: Resource[IO, Resource[IO, Session[IO]]] =
     Resource.eval(DbConfig.fromEnv(sys.env.get)).flatMap(buildPooled)
