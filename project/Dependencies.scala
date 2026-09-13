@@ -10,12 +10,14 @@ object Dependencies {
     val munitCE = "2.2.0"
   }
 
+  private val http4sOrg = "org.http4s"
+
   val all: Seq[ModuleID] = Seq(
     "org.typelevel" %% "cats-effect" % V.catsEffect,
-    "org.http4s" %% "http4s-ember-server" % V.http4s,
-    "org.http4s" %% "http4s-ember-client" % V.http4s,
-    "org.http4s" %% "http4s-circe" % V.http4s,
-    "org.http4s" %% "http4s-dsl" % V.http4s,
+    http4sOrg %% "http4s-ember-server" % V.http4s,
+    http4sOrg %% "http4s-ember-client" % V.http4s,
+    http4sOrg %% "http4s-circe" % V.http4s,
+    http4sOrg %% "http4s-dsl" % V.http4s,
     "io.circe" %% "circe-generic" % V.circe,
     "org.tpolecat" %% "skunk-core" % V.skunk,
     "com.github.jwt-scala" %% "jwt-circe" % V.jwtScala,
