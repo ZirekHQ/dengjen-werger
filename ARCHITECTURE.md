@@ -32,10 +32,13 @@ boundary yet — the SPA and Crowdin are the only other systems in play.
 ```
 src/main/scala/werger/
 ├── domain/    Model.scala           — pure data + state machine, zero IO
-├── ports/     TranslationSource.scala — interfaces the domain depends on
+├── ports/     TranslationSource.scala, MachineTranslationSource.scala — interfaces the domain depends on
 ├── adapters/
-│   ├── crowdin/  CrowdinClient.scala, CrowdinCodecs.scala — implements TranslationSource
-│   └── db/       Db.scala, DbConfig.scala                 — Skunk session pool
+│   ├── crowdin/         CrowdinClient.scala, CrowdinCodecs.scala — implements TranslationSource
+│   ├── googletranslate/ GoogleTranslateClient.scala, GoogleTranslateCodecs.scala, GoogleTranslateSource.scala
+│   │                    — implements MachineTranslationSource
+│   └── db/              Db.scala, DbConfig.scala                 — Skunk session pool
+├── service/   DraftCredit.scala     — pure: scores a submission against its machine-translated draft
 ├── http/      Routes.scala          — HTTP entrypoints, calls into domain/ports
 └── Main.scala                       — composition root: wires adapters to ports to http
 ```
@@ -62,6 +65,13 @@ it's enforced by convention and PR review only.
 - **One `TranslationSource` port, one implementation (`CrowdinSource`,
   in progress).** The trait's shape is set by Crowdin's real API, not
   speculative multi-backend support — see the port doc comment.
+- **`MachineTranslationSource` (Google Translate adapter) is built but not
+  yet wired in.** It fills `WorkItem.targetTextDraft` and (via
+  `DraftCredit`) can distinguish confirming a draft as-is from real
+  translation work, but nothing yet calls it — that happens once
+  `JobsService` (the Crowdin sync job) and `ApprovalService` (points
+  award) exist. See
+  [`docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md`](docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md).
 - **GraalVM native-image on Cloud Run**, chosen for cold-start latency
   given request-driven (not always-on) traffic. This constrains dependency
   choices project-wide (see the Skunk decision above); check native-image

@@ -25,6 +25,17 @@ about them.
 | 7. Crowdin client — write path | `submit`/`approve`, guarded live integration test | Planned |
 | 8. `CrowdinSource` | `TranslationSource` implementation | Planned |
 
+## Landed alongside Milestone 1: Machine-Translation Draft Assist
+
+Not one of Milestone 1's numbered tasks — a separate foundation built from
+its own spec/plan so the backlog isn't blank on day one. `MachineTranslationSource`,
+the Google Translate adapter, and `DraftCredit`'s scoring are done and tested;
+wiring them into the Crowdin sync job and points award is deferred until
+`JobsService` (15) and `ApprovalService` (14) below exist. See
+[`docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md`](docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md)
+and
+[`docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md`](docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md).
+
 ## Next: Milestone 2 — Domain & Gamification Engine
 
 | Task | Ships |
