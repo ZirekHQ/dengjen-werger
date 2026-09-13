@@ -59,6 +59,33 @@ class GoogleTranslateClientSpec extends CatsEffectSuite:
     val client = new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key", chunkSize = 1)
     client.translate(List("a", "b"), targetLanguageCode = "ku").assertEquals(Map("a" -> "x"))
 
+  test("translate splits a chunk that would exceed maxRequestBytes even under chunkSize"):
+    for
+      calls <- Ref.of[IO, Int](0)
+      stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
+        calls.update(_ + 1) *> Ok("""{"data":{"translations":[{"translatedText":"x"}]}}""")
+      }.orNotFound
+      // One serialized request for "aaaa" is 44 bytes, for both texts together 51 — a 45-byte cap fits one but not
+      // both, forcing a split by size alone even though both texts fit well under chunkSize.
+      client = new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key", maxRequestBytes = 45)
+      _ <- client.translate(List("aaaa", "bbbb"), targetLanguageCode = "ku")
+      count <- calls.get
+    yield assertEquals(count, 2)
+
+  test("translate excludes a text whose own request would exceed maxRequestBytes, without calling Google"):
+    for
+      calls <- Ref.of[IO, Int](0)
+      stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
+        calls.update(_ + 1) *> Ok("""{"data":{"translations":[{"translatedText":"x"}]}}""")
+      }.orNotFound
+      // No single text's request can fit under a 5-byte cap, so nothing should ever be sent.
+      client = new GoogleTranslateClient(Client.fromHttpApp(stub), apiKey = "test-key", maxRequestBytes = 5)
+      result <- client.translate(List("a", "b"), targetLanguageCode = "ku")
+      count <- calls.get
+    yield
+      assertEquals(result, Map.empty[String, String])
+      assertEquals(count, 0)
+
   test("translate raises when every chunk fails"):
     val stub = HttpRoutes.of[IO] { case POST -> Root / "language" / "translate" / "v2" :? _ =>
       InternalServerError("boom")
