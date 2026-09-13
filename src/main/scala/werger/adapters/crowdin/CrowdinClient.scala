@@ -17,18 +17,18 @@ private final case class Wrapped[A](data: A)
 private object Wrapped:
   given [A: Decoder]: Decoder[Wrapped[A]] = deriveDecoder
 
-/** Reads Crowdin's current translation state for one project/file: its
-  * source strings and the translations already approved against them.
-  */
+/**
+ * Reads Crowdin's current translation state for one project/file: its source strings and the translations already
+ * approved against them.
+ */
 class CrowdinClient(httpClient: Client[IO], token: String, projectId: Long, pageSize: Long = 500L):
   private val base = Uri.unsafeFromString("https://api.crowdin.com")
   private val auth = Authorization(Credentials.Token(AuthScheme.Bearer, token))
 
-  /** Follows Crowdin's limit/offset pagination until a page comes back
-    * shorter than `pageSize`, since Crowdin's list endpoints cap a single
-    * response (default limit 25) well below what a real file's string
-    * count can reach.
-    */
+  /**
+   * Follows Crowdin's limit/offset pagination until a page comes back shorter than `pageSize`, since Crowdin's list
+   * endpoints cap a single response (default limit 25) well below what a real file's string count can reach.
+   */
   private def paginate[A: Decoder](requestAt: Long => Request[IO]): IO[List[A]] =
     def go(offset: Long, acc: List[A]): IO[List[A]] =
       httpClient.expect[Envelope[A]](requestAt(offset)).flatMap { envelope =>

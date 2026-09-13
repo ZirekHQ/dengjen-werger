@@ -30,7 +30,8 @@ class CrowdinClientSpec extends CatsEffectSuite:
     val stub = HttpRoutes.of[IO] {
       case GET -> Root / "api" / "v2" / "projects" / "780748" / "files" / "661" / "strings" :? OffsetParam(offset) =>
         val page = offset match
-          case 0 => """{"data":[{"data":{"id":1,"text":"One","identifier":"a"}},{"data":{"id":2,"text":"Two","identifier":"b"}}]}"""
+          case 0 =>
+            """{"data":[{"data":{"id":1,"text":"One","identifier":"a"}},{"data":{"id":2,"text":"Two","identifier":"b"}}]}"""
           case 2 => """{"data":[{"data":{"id":3,"text":"Three","identifier":"c"}}]}"""
           case _ => """{"data":[]}"""
         Ok(page)
@@ -53,7 +54,9 @@ class CrowdinClientSpec extends CatsEffectSuite:
   test("approvedTranslations keeps only translations that appear in Crowdin's approvals list"):
     val stub = HttpRoutes.of[IO] {
       case GET -> Root / "api" / "v2" / "projects" / "780748" / "languages" / "kmr" / "translations" :? _ =>
-        Ok("""{"data":[{"data":{"id":42,"stringId":661,"text":"Temam"}},{"data":{"id":43,"stringId":662,"text":"Na"}}]}""")
+        Ok(
+          """{"data":[{"data":{"id":42,"stringId":661,"text":"Temam"}},{"data":{"id":43,"stringId":662,"text":"Na"}}]}"""
+        )
       case GET -> Root / "api" / "v2" / "projects" / "780748" / "approvals" :? _ =>
         Ok("""{"data":[{"data":{"translationId":42}}]}""")
     }.orNotFound
