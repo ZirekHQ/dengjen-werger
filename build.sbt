@@ -29,6 +29,11 @@ lazy val root = (project in file("."))
     inConfig(E2e)(Defaults.testSettings),
     scalafixConfigSettings(IntegrationTest),
     scalafixConfigSettings(E2e),
+    // scalafmtCheckAll only wires Compile/Test by default, same gap as
+    // scalafix above — without these, misformatted src/it or src/e2e
+    // sources pass the check silently.
+    org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings(IntegrationTest),
+    org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings(E2e),
     libraryDependencies ++= Dependencies.all,
     coverageMinimumStmtTotal := 80,
     coverageFailOnMinimum := true,
