@@ -21,6 +21,7 @@ Tests are split into three tiers:
 A test in the integration or e2e tier that needs credentials checks for
 them with `sys.env.get(...)` *before* touching any `IO`, substituting a
 "skipped — set FOO to run against real X" test when they're absent.
-Reading a missing env var inside an `IO` block throws a fatal JVM `Error`
-that Cats Effect's runtime doesn't catch as a normal failure, which hangs
-the whole test run instead of failing or skipping it.
+A missing var read eagerly during object initialization throws a fatal
+`ExceptionInInitializerError` that Cats Effect's runtime doesn't catch,
+hanging the test run; reading it lazily inside a deferred `IO` instead
+surfaces as a normal, catchable failure.

@@ -570,7 +570,7 @@ object Routes:
         status = "ok",
         version = BuildInfo.version,
         commit = BuildInfo.gitCommit,
-        builtAt = java.time.Instant.now().toString
+        builtAt = BuildInfo.builtAtString
       )
     )
   }

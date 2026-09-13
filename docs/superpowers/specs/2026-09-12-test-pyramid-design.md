@@ -78,8 +78,10 @@ for `e2e`) checks `sys.env.get(...)` *outside* any `IO` block and substitutes
 a skip-stub test when absent — the pattern already fixed on
 `DbPoolingSpec` and specified for the plan's `CrowdinSourceIntegrationSpec`.
 This is unrelated to the tier split itself: without it, a missing env var
-throws inside `IO`, which Cats Effect's runtime doesn't catch (JVM `Error`s
-bypass `NonFatal` handling), hanging the run instead of failing or skipping.
+read eagerly during object initialization throws a fatal
+`ExceptionInInitializerError` (bypasses `NonFatal` handling), hanging the
+run instead of failing or skipping. Reading it lazily inside a deferred
+`IO` instead surfaces as a normal, catchable failure.
 The tier split organizes *where* guarded tests live; it doesn't replace
 the guard.
 

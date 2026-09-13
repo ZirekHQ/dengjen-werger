@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Both new sbt configurations are defined via `config(name) extend Test`, never the built-in `IntegrationTest`/`Defaults.itSettings` (deprecated in sbt 1.9+, removed in sbt 2.x).
-- Every test in the integration or e2e tier that needs credentials checks for them with `sys.env.get(...)` *before* touching any `IO`, substituting a "skipped — set FOO..." test when absent. Reading a missing env var inside `IO` throws a fatal JVM `Error` that Cats Effect's runtime doesn't catch as a normal failure, hanging the run instead of failing or skipping it.
+- Every test in the integration or e2e tier that needs credentials checks for them with `sys.env.get(...)` *before* touching any `IO`, substituting a "skipped — set FOO..." test when absent. A missing var read eagerly during object initialization throws a fatal `ExceptionInInitializerError` that Cats Effect's runtime doesn't catch, hanging the run; reading it lazily inside a deferred `IO` instead surfaces as a normal, catchable failure.
 - CI's `unit` and `integration` jobs run concurrently — no `needs` between them.
 - No `var`, `null`, or `return` in Scala code; model absence with `Option`, failure with `Either`/`IO`'s error channel.
 - Every task ends green (tests passing) and committed before moving to the next.

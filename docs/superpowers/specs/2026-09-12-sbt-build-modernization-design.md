@@ -63,7 +63,7 @@ Add `sbt-scoverage`. Settings:
 coverageMinimumStmtTotal := 80
 coverageFailOnMinimum := true
 coverageExcludedPackages := "werger\\.Main"
-coverageExcludedFiles := ".*/adapters/db/Db\\.scala"
+coverageExcludedFiles := ".*/adapters/db/Db"
 ```
 
 `Db.scala` already parameterizes `buildPooled` over a
@@ -187,7 +187,7 @@ ThisBuild / licenses := List("GPL-3.0-or-later" -> url("https://www.gnu.org/lice
 New `project/Dependencies.scala`:
 
 ```scala
-import sbt.*
+import sbt._
 
 object Dependencies:
   object V:
