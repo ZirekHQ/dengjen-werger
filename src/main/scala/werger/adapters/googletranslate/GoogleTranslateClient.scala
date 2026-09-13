@@ -38,8 +38,7 @@ class GoogleTranslateClient(httpClient: Client[IO], apiKey: String, chunkSize: I
           )
     }
 
-  // A chunk that never got a response contributes nothing rather than failing the whole batch; only re-raise when
-  // no chunk succeeded, since then there is nothing worth returning.
+  // Deliberately not a plain `.traverse`: that would fail the whole batch, discarding earlier successes, on one bad chunk.
   private def collectResults(results: List[(List[String], Either[Throwable, List[String]])]): IO[Map[String, String]] =
     val succeeded = results.collect { case (chunk, Right(translated)) => chunk.zip(translated) }.flatten.toMap
     results.collectFirst { case (_, Left(e)) => e } match
