@@ -544,6 +544,7 @@ Add inside `root`'s `.settings(...)`:
       BuildInfoKey.action("gitCommit")(gitCommit)
     ),
     buildInfoPackage := "werger",
+    buildInfoOptions += BuildInfoOption.BuildTime,
 ```
 
 - [ ] **Step 3: Update `Routes.scala`**
