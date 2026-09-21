@@ -1,0 +1,29 @@
+= Contributing
+
+This repo follows https://github.com/ZirekHQ/.github/blob/main/CONTRIBUTING.md[ZirekHQ's org-wide contribution guide].
+
+Repo-specific notes:
+- Read the link:docs/superpowers/specs/2026-09-11-dengjen-werger-design.md[spec]
+ before picking up a story — it's the source of truth the implementation
+ plan argues from.
+- Every change lands through a PR; CI must be green before merge.
+
+== Testing pyramid
+
+Tests are split into three tiers:
+
+|===
+|Tier |Directory |Command |Covers 
+
+|Unit |`src/test/scala` |`sbt test` (`Test / test`) |Pure functions and I/O stubbed in-process — no real network or database. Runs on every PR. 
+|Integration |`src/it/scala` |`sbt it:test` (`IntegrationTest / test`) |Real infrastructure this project controls — the dev Supabase Postgres via Supavisor. Runs on every PR using repo secrets; on a fork PR (no secrets available) it skips cleanly instead of failing. 
+|E2E |`src/e2e/scala` |`sbt e2e:test` (`E2e / test`) |Live third-party services (the real Crowdin API) or the fully deployed system. Run manually with the relevant credentials — not run in CI. 
+|===
+
+A test in the integration or e2e tier that needs credentials checks for
+them with `sys.env.get(...)` _before_ touching any `IO`, substituting a
+"skipped — set FOO to run against real X" test when they're absent.
+A missing var read eagerly during object initialization throws a fatal
+`ExceptionInInitializerError` that Cats Effect's runtime doesn't catch,
+hanging the test run; reading it lazily inside a deferred `IO` instead
+surfaces as a normal, catchable failure.
