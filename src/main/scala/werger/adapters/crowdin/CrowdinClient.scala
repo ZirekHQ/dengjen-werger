@@ -2,10 +2,12 @@ package werger.adapters.crowdin
 
 import cats.effect.IO
 import cats.syntax.all.*
-import io.circe.Decoder
 import io.circe.generic.semiauto.*
+import io.circe.syntax.*
+import io.circe.{Decoder, Json}
 import org.http4s.*
 import org.http4s.circe.CirceEntityDecoder.*
+import org.http4s.circe.CirceEntityEncoder.*
 import org.http4s.client.Client
 import org.http4s.headers.Authorization
 
@@ -66,3 +68,15 @@ class CrowdinClient(httpClient: Client[IO], token: String, projectId: Long, page
       Request[IO](Method.GET, uri).putHeaders(auth)
     }.map(_.map(_.translationId).toSet)
     (translations, approvedIds).mapN((ts, ids) => ts.filter(t => ids.contains(t.id)))
+
+  def createTranslation(languageId: String, stringId: Long, text: String): IO[CrowdinCreatedTranslation] =
+    val body = Json.obj("stringId" -> stringId.asJson, "languageId" -> languageId.asJson, "text" -> text.asJson)
+    httpClient.expect[Wrapped[CrowdinCreatedTranslation]](post("translations", body)).map(_.data)
+
+  def approveTranslation(translationId: Long): IO[Unit] =
+    val body = Json.obj("translationId" -> translationId.asJson)
+    httpClient.expect[Json](post("approvals", body)).void
+
+  private def post(resource: String, body: Json): Request[IO] =
+    val uri = base / "api" / "v2" / "projects" / projectId.toString / resource
+    Request[IO](Method.POST, uri).withEntity(body).putHeaders(auth)
