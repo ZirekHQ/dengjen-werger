@@ -19,8 +19,8 @@ public sealed interface Result<E, A> {
     /** Collapses either outcome into one value, so callers handle both cases without casting. */
     default <R> R fold(Function<? super E, ? extends R> onErr, Function<? super A, ? extends R> onOk) {
         return switch (this) {
-            case Ok<E, A> ok -> onOk.apply(ok.value());
-            case Err<E, A> err -> onErr.apply(err.error());
+            case Ok<E, A>(A value) -> onOk.apply(value);
+            case Err<E, A>(E error) -> onErr.apply(error);
         };
     }
 }
