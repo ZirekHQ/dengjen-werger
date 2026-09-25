@@ -18,6 +18,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  */
 public class CrowdinClient {
     private static final String BASE = "https://api.crowdin.com/api/v2/projects/";
+    private static final String FILE_ID = "fileId";
 
     private final RestClient httpClient;
     private final String token;
@@ -71,7 +72,7 @@ public class CrowdinClient {
     public List<CrowdinSourceString> sourceStrings(long fileId) {
         return paginate(
                 offset -> resource("strings", offset)
-                        .queryParam("fileId", fileId)
+                        .queryParam(FILE_ID, fileId)
                         .build()
                         .toUri(),
                 new ParameterizedTypeReference<>() {});
@@ -80,7 +81,7 @@ public class CrowdinClient {
     public List<CrowdinTranslation> approvedTranslations(String languageId, long fileId) {
         List<CrowdinTranslation> translations = paginate(
                 offset -> resource("languages/" + languageId + "/translations", offset)
-                        .queryParam("fileId", fileId)
+                        .queryParam(FILE_ID, fileId)
                         .build()
                         .toUri(),
                 new ParameterizedTypeReference<CrowdinEnvelope<CrowdinTranslation>>() {});
@@ -89,7 +90,7 @@ public class CrowdinClient {
         // endpoint, so the approved subset has to come from /approvals instead.
         Set<Long> approvedIds = paginate(
                         offset -> resource("approvals", offset)
-                                .queryParam("fileId", fileId)
+                                .queryParam(FILE_ID, fileId)
                                 .queryParam("languageId", languageId)
                                 .build()
                                 .toUri(),
