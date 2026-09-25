@@ -67,6 +67,24 @@ class DraftCreditTest {
     }
 
     @Test
+    void textsLongerThanTheScoringCapAreConfirmedOnlyWhenUnchanged() {
+        String longDraft = "a".repeat(DraftCredit.MAX_SCORED_LENGTH + 1);
+        String oneEditAway = "b" + longDraft.substring(1);
+        assertThat(DraftCredit.pointsReasonFor(longDraft, Optional.of(longDraft), 0.5))
+                .isEqualTo(PointsReason.DRAFT_CONFIRMED);
+        assertThat(DraftCredit.pointsReasonFor(oneEditAway, Optional.of(longDraft), 0.5))
+                .isEqualTo(PointsReason.SUBMISSION_APPROVED);
+    }
+
+    @Test
+    void textsAtTheScoringCapAreStillScoredByEditDistance() {
+        String draft = "a".repeat(DraftCredit.MAX_SCORED_LENGTH);
+        String oneEditAway = "b" + draft.substring(1);
+        assertThat(DraftCredit.pointsReasonFor(oneEditAway, Optional.of(draft), 0.5))
+                .isEqualTo(PointsReason.DRAFT_CONFIRMED);
+    }
+
+    @Test
     void boundedDistanceDecidesExactlyLikeFullLevenshtein() {
         Random random = new Random(42);
         for (int n = 0; n < 5_000; n++) {

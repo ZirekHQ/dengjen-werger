@@ -10,6 +10,14 @@ import werger.domain.PointsReason;
  * points-awarding code doesn't have to know how a submission's origin is tracked.
  */
 public final class DraftCredit {
+    /**
+     * Longest normalized text scored by edit distance. The banded distance still grows with length times band width,
+     * so without a cap a long, similar pair at a low threshold costs quadratic work. Translation units (UI strings) are
+     * far shorter; beyond this only an unchanged draft counts as confirmed, which bounds the work to about
+     * {@code MAX_SCORED_LENGTH}² cells.
+     */
+    static final int MAX_SCORED_LENGTH = 2_000;
+
     private DraftCredit() {}
 
     public static PointsReason pointsReasonFor(
@@ -35,6 +43,9 @@ public final class DraftCredit {
         int maxLen = Math.max(a.length(), b.length());
         if (maxLen == 0 || threshold == 0.0) {
             return true;
+        }
+        if (maxLen > MAX_SCORED_LENGTH) {
+            return a.equals(b);
         }
         int bound = (int) Math.floor((1.0 - threshold) * maxLen) + 1;
         int distance = boundedLevenshtein(a, b, bound);
