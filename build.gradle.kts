@@ -43,7 +43,8 @@ repositories {
 }
 
 // Pins every resolved version in gradle.lockfile so builds are reproducible.
-// Update with: ./gradlew dependencies --write-locks
+// Update with: ./gradlew dependencies --write-locks --no-configuration-cache
+// (a cached configuration can otherwise write stale versions).
 dependencyLocking {
     lockAllConfigurations()
 }
@@ -122,6 +123,12 @@ listOf("integrationTest", "e2e").forEach { name ->
 // A composition root and a thin driver wrapper aren't meaningfully
 // unit-testable; including them would only pressure someone into padding
 // coverage with low-value tests elsewhere.
+// Pinned rather than left to Gradle's built-in default, which changes with the
+// Gradle version and would then disagree with gradle.lockfile.
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
 val coverageExclusions = listOf("werger/WergerApplication*", "werger/adapters/db/Db.class")
 
 tasks.jacocoTestReport {

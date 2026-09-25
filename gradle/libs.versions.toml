@@ -1,6 +1,7 @@
 [versions]
 spring-boot = "4.1.1"
 spotless = "8.10.2"
+jacoco = "0.8.15"
 
 [libraries]
 spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
