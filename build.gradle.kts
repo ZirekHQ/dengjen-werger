@@ -60,9 +60,9 @@ springBoot {
     }
 }
 
-// Only the executable boot jar ships; the plain jar would just be a second
-// artifact for the Dockerfile to pick between.
-tasks.jar { enabled = false }
+// A fixed name lets the Dockerfile copy exactly the executable jar, not the
+// plain jar the integrationTest and e2e suites compile against.
+tasks.bootJar { archiveFileName = "dengjen-werger.jar" }
 
 tasks.withType<JavaCompile>().configureEach {
     options.release = 25
@@ -73,7 +73,7 @@ tasks.withType<JavaCompile>().configureEach {
 // real third-party API. See .github/CONTRIBUTING.adoc.
 testing {
     suites {
-        val test by getting(JvmTestSuite::class) {
+        named<JvmTestSuite>("test") {
             useJUnitJupiter()
             dependencies {
                 implementation(platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES))
