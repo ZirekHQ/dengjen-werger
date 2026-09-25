@@ -30,7 +30,7 @@ class GoogleTranslateSourceTest {
 
     private static MtError errorOf(Result<MtError, Map<String, String>> result) {
         assertThat(result).isInstanceOf(Result.Err.class);
-        return ((Result.Err<MtError, Map<String, String>>) result).error();
+        return result.fold(error -> error, value -> null);
     }
 
     @Test

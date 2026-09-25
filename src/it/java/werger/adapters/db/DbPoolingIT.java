@@ -15,8 +15,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 class DbPoolingIT {
     // Skips instead of failing when Postgres creds are absent — this integration
-    // test may run without them locally or on a fork PR. A fork PR's ${{ secrets.X }}
-    // resolves to "", not an unset var, so this checks non-empty rather than presence.
+    // test may run without them locally or on a fork PR. On a fork PR, GitHub
+    // passes repository secrets as empty strings rather than leaving the variables
+    // unset, so this checks for a non-empty value rather than mere presence.
     private static boolean hasCredentials() {
         return List.of("DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME").stream().allMatch(name -> {
             String value = System.getenv(name);
