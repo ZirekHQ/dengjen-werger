@@ -19,9 +19,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8  # v1.5.9
-      - run: sbt --allow-empty ";coverage;test;coverageReport"
-      - run: sbt --allow-empty lint
+          cache: gradle
+      # check = unit tests + 80% JaCoCo line-coverage gate + Spotless.
+      - run: ./gradlew check
   integration:
     runs-on: ubuntu-latest
     steps:
@@ -32,8 +32,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8  # v1.5.9
-      - run: sbt --allow-empty "IntegrationTest / test"
+          cache: gradle
+      - run: ./gradlew integrationTest
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}

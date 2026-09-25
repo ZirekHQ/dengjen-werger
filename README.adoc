@@ -51,14 +51,14 @@ open questions for each stage live in the spec and plan linked below.
 
 Prerequisites:
 
-* JDK 21
-* sbt (this repo pins `sbt.version=1.13.0` in `project/build.properties`;
- any recent sbt launcher fetches it automatically)
+* JDK 25
+* Nothing else — the Gradle wrapper (`./gradlew`) downloads the pinned
+ Gradle version on first use
 
 Run the scaffold:
 
 ----
-sbt run
+./gradlew bootRun
 ----
 
 Confirm it's serving:
@@ -72,8 +72,11 @@ The command prints a JSON body: `{"status":"ok","version":"...","commit":"...","
 Run the test suite:
 
 ----
-sbt test
+./gradlew check
 ----
+
+`check` runs the unit tests, the 80% JaCoCo coverage gate and the
+Spotless format check; `./gradlew spotlessApply` fixes formatting.
 
 == Docs
 

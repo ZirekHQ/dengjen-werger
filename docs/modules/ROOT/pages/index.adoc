@@ -35,7 +35,7 @@ No submission ships to the source platform without passing review.
 
 == Status
 
-This project is at the scaffold stage: an sbt project with CI and a `/healthz` route.
+This project is at the scaffold stage: a Java / Spring Boot project built with Gradle, with CI and a `/healthz` route.
 The full commitment/review/points/streak/leaderboard loop is planned for v1. See the
 https://github.com/ZirekHQ/dengjen-werger[repository] for the design spec,
 implementation plan, and current progress.
