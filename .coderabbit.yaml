@@ -1,23 +1,22 @@
 reviews:
   path_filters:
-    - "!target/**"
-    - "!project/target/**"
-    - "!project/project/**"
+    - "!build/**"
+    - "!.gradle/**"
     - "!.idea/**"
 
   instructions: |
-    - This is a Scala 3 / Cats Effect / http4s backend (see build.sbt); no client/frontend exists yet.
-    - Follow this org's Scala conventions: no `var`, `null`, or `return`; prefer `map`/`fold` over loops; errors as `Either`/`IO`, never thrown exceptions for expected failures.
-    - Database access goes through Skunk, not JDBC — flag any JDBC/HikariCP dependency or import, since JDBC's reflection-heavy driver registration breaks the project's planned GraalVM native-image build.
+    - This is a Java 25 / Spring Boot 4 (Spring MVC, RestClient) backend built with Gradle (see build.gradle.kts and gradle/libs.versions.toml); no client/frontend exists yet.
+    - Prefer immutable records and sealed interfaces for domain data; expected failures at a port boundary are returned as `Result`/sealed error types, not thrown exceptions.
+    - Database access goes through JDBC on a HikariCP pool against Supavisor's transaction pooler — flag any change that drops `prepareThreshold=0` from the JDBC URL or otherwise re-enables named server-side prepared statements.
     - The project's core value proposition is that a live translation was actually reviewed — flag any change that could let a submission reach a synced/upstream-pushed state without a completed, valid review, or that could let a user review their own submission.
     - Concurrency-sensitive paths (work-item leasing, the review state transition, points-ledger payout) need tests that exercise the race, not just the happy path — flag such changes when they lack one.
     - Keep comments concise: explain the root cause and the fix, not a restatement of the code.
 
   path_instructions:
-    - path: "src/main/scala/werger/http/**"
+    - path: "src/main/java/werger/http/**"
       instructions: |
         - Routes should stay thin: request/response mapping and status codes only, with domain and business logic living elsewhere as the domain model grows.
 
-    - path: "src/test/scala/**"
+    - path: "src/test/java/**"
       instructions: |
-        - Prefer munit-cats-effect's IO-native assertions over blocking/unsafeRunSync calls in test bodies.
+        - Stub outbound HTTP with MockRestServiceServer rather than real network calls; unit tests must not reach real infrastructure.

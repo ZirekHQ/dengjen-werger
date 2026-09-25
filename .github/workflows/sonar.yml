@@ -32,9 +32,9 @@ jobs:
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: "21"
-      - uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8 # v1.5.9
-      - run: sbt --allow-empty ";coverage;test;coverageReport"
+          java-version: "25"
+          cache: gradle
+      - run: ./gradlew test jacocoTestReport
 
       - name: SonarQube scan
         if: env.SONAR_TOKEN != ''

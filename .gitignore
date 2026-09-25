@@ -1,7 +1,6 @@
-target/
-project/target/
-project/project/
-.bsp/
+build/
+.gradle/
+.kotlin/
 *.class
 
 client/node_modules/

@@ -13,10 +13,10 @@ link:docs/superpowers/specs/2026-09-11-dengjen-werger-design.md[`docs/superpower
 ----
 flowchart TD
     Browser([Browser]) --> SPA[SPA frontend]
-    SPA -->|REST, JWT from Supabase Auth| Backend["Scala backend
-Cloud Run, GraalVM native-image"]
+    SPA -->|REST, JWT from Supabase Auth| Backend["Java / Spring Boot backend
+Cloud Run"]
     Backend -->|v1 adapter, kmr-scoped token| Crowdin[Crowdin API]
-    Backend -->|"Skunk (fs2/Cats Effect, no JDBC)"| PG[("Supabase Postgres
+    Backend -->|"JDBC + HikariCP"| PG[("Supabase Postgres
 domain + TM, via Supavisor
 transaction pooler, port 6543")]
     Scheduler["Cloud Scheduler"] -->|"POST /internal/jobs/evaluate-and-sync
@@ -25,44 +25,47 @@ OIDC token or shared secret"| Backend
 Google / Apple / GitHub / email"] -.->|issues the JWT the backend verifies| Backend
 ----
 
-One Scala service holds all backend logic. There is no separate service
+One Spring Boot service holds all backend logic. There is no separate service
 boundary yet — the SPA and Crowdin are the only other systems in play.
 
 == Backend layering (ports &amp; adapters)
 
 ----
-src/main/scala/werger/
-├── domain/    Model.scala           — pure data + state machine, zero IO
-├── ports/     TranslationSource.scala, MachineTranslationSource.scala — interfaces the domain depends on
+src/main/java/werger/
+├── domain/    records, enums, sealed WorkItemStatus — pure data + state machine, zero I/O
+├── ports/     TranslationSource, MachineTranslationSource, Result, SourceError, MtError
+│                                    — interfaces the domain depends on
 ├── adapters/
-│   ├── crowdin/         CrowdinClient.scala, CrowdinCodecs.scala — implements TranslationSource
-│   ├── googletranslate/ GoogleTranslateClient.scala, GoogleTranslateCodecs.scala, GoogleTranslateSource.scala
+│   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
+│   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
-│   └── db/              Db.scala, DbConfig.scala                 — Skunk session pool
-├── service/   DraftCredit.scala     — pure: scores a submission against its machine-translated draft
-├── http/      Routes.scala          — HTTP entrypoints, calls into domain/ports
-└── Main.scala                       — composition root: wires adapters to ports to http
+│   └── db/              Db, DbConfig                             — HikariCP pool over pgjdbc
+├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
+├── http/      HealthController      — HTTP entrypoints, calls into domain/ports
+└── WergerApplication                — Spring Boot entrypoint and composition root
 ----
 
 Dependency rule: `domain` never imports from `adapters` or `http`, and
-never performs `IO`. `ports` defines the interfaces both `domain` logic and
+never performs I/O. `ports` defines the interfaces both `domain` logic and
 `adapters` are written against — it's the only thing an adapter and the
-domain have in common. `http` and `Main` are the only places allowed to
+domain have in common. `http` and the Spring configuration are the only places allowed to
 know about a concrete adapter; everything else programs against the port.
 There is no dependency-checker enforcing this yet (see Open gaps below) —
 it's enforced by convention and PR review only.
 
 == Key decisions and why they're not obvious from the code
 
-* *Skunk, not JDBC/HikariCP*, for Postgres access. JDBC's reflection- and
- SPI-heavy driver registration is a known source of GraalVM native-image
- build breakage; nothing else in this stack needs JDBC compatibility.
+* *JDBC + HikariCP* for Postgres access — the Spring ecosystem default.
+ (The earlier Scala build used Skunk specifically to avoid JDBC under
+ GraalVM native-image; Spring Boot's AOT processing supports pgjdbc and
+ HikariCP in native images, so that constraint no longer applies.)
 * *Supavisor transaction pooler (port 6543), not the direct port.* In
  transaction-pooling mode a backend connection is handed out per
- transaction, not per session, so Skunk's default named prepared
+ transaction, not per session, so named server-side prepared
  statements can collide or go missing across pooled connections. This was
- a verified risk, not a hypothetical — check `Db.scala` before changing
- pooling or statement-naming behavior.
+ a verified risk, not a hypothetical — `DbConfig.jdbcUrl()` sets
+ `prepareThreshold=0` to stop pgjdbc from ever creating one; check it
+ before changing pooling or statement behavior.
 * *One `TranslationSource` port, one implementation (`CrowdinSource`,
  in progress).* The trait's shape is set by Crowdin's real API, not
  speculative multi-backend support — see the port doc comment.
@@ -73,20 +76,22 @@ it's enforced by convention and PR review only.
  `JobsService` (the Crowdin sync job) and `ApprovalService` (points
  award) exist. See
  link:docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md[`docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md`].
-* *GraalVM native-image on Cloud Run*, chosen for cold-start latency
- given request-driven (not always-on) traffic. This constrains dependency
- choices project-wide (see the Skunk decision above); check native-image
- compatibility before adding a library that talks to the database, does
- reflection, or loads native code.
-* *80% statement coverage is a hard CI gate* (`coverageFailOnMinimum` in
- `build.sbt`), with `werger.Main` and `Db.scala` excluded — a composition
+* *GraalVM native-image on Cloud Run* remains the target, chosen for
+ cold-start latency given request-driven (not always-on) traffic. The
+ build ships a JVM image today (see `Dockerfile`); a native build via
+ Spring Boot AOT and the GraalVM Native Build Tools plugin is not wired
+ in yet. Check native-image compatibility before adding a library that
+ does reflection or loads native code.
+* *80% line coverage is a hard CI gate* (`jacocoTestCoverageVerification`
+ in `build.gradle.kts`, run by `./gradlew check`), with
+ `WergerApplication` and `Db` excluded — a composition
  root and a thin driver wrapper aren't meaningfully unit-testable, and
  including them would just pressure someone into padding coverage with
  low-value tests elsewhere.
-* *Three test tiers* (`Test`, `IntegrationTest`, `E2e`) map to three
+* *Three test tiers* (Gradle test suites `test`, `integrationTest`, `e2e`) map to three
  trust levels of dependency — stubbed, real dev infra, real third-party
  API — not to a generic "small/medium/large" split. Full rationale and the
- lazy-`sys.env.get` requirement live in
+ skip-when-credentials-are-absent requirement live in
  link:.github/CONTRIBUTING.adoc[`.github/CONTRIBUTING.adoc`].
 
 == Explicit non-goals (v1)
@@ -104,7 +109,6 @@ it's enforced by convention and PR review only.
 == Open gaps
 
 No automated architecture fitness function exists yet (no ArchUnit
-equivalent / Scalafix custom rule enforcing the `domain` → `ports` →
-`adapters` dependency direction). Layering is currently held by
-discipline and PR review only — worth adding a Scalafix rule once the
-adapter count grows past one.
+rule enforcing the `domain` → `ports` → `adapters` dependency direction).
+Layering is currently held by discipline and PR review only — worth
+adding an ArchUnit test once the adapter count grows past one.

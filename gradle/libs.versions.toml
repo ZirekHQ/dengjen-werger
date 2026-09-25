@@ -1,0 +1,17 @@
+[versions]
+spring-boot = "4.1.1"
+spotless = "8.10.2"
+
+[libraries]
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
+spring-jdbc = { module = "org.springframework:spring-jdbc" }
+hikaricp = { module = "com.zaxxer:HikariCP" }
+postgresql = { module = "org.postgresql:postgresql" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
