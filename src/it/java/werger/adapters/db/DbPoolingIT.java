@@ -32,7 +32,15 @@ class DbPoolingIT {
         try (HikariDataSource pool = Db.pooledFromEnv();
                 ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             JdbcTemplate jdbc = new JdbcTemplate(pool);
-            Callable<Integer> query = () -> jdbc.queryForObject("select 1", Integer.class);
+            // A parameterized query goes through a PreparedStatement, and pgJDBC would promote it to a named
+            // server-side statement after five executions on one connection without prepareThreshold=0.
+            Callable<Integer> query = () -> {
+                int last = 0;
+                for (int run = 0; run < 10; run++) {
+                    last = jdbc.queryForObject("select ?::int", Integer.class, 1);
+                }
+                return last;
+            };
             List<Future<Integer>> results = executor.invokeAll(
                     IntStream.range(0, 20).mapToObj(i -> query).toList());
             for (Future<Integer> result : results) {

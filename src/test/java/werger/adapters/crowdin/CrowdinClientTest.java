@@ -33,8 +33,10 @@ class CrowdinClientTest {
 
     @Test
     void sourceStringsDecodesCrowdinsPaginatedResponseShape() {
-        respond("/files/661/strings", """
-                {"data":[{"data":{"id":661,"text":"OK","identifier":"addon.OK"}}]}""");
+        server.expect(requestTo(Matchers.startsWith(PROJECT + "/strings")))
+                .andExpect(queryParam("fileId", "661"))
+                .andRespond(withSuccess("""
+                {"data":[{"data":{"id":661,"text":"OK","identifier":"addon.OK"}}]}""", MediaType.APPLICATION_JSON));
         assertThat(crowdin(500).sourceStrings(661L))
                 .extracting(CrowdinSourceString::text)
                 .containsExactly("OK");
@@ -43,12 +45,12 @@ class CrowdinClientTest {
 
     @Test
     void sourceStringsFollowsCrowdinsPaginationUntilAPageComesBackShort() {
-        server.expect(requestTo(Matchers.startsWith(PROJECT + "/files/661/strings")))
+        server.expect(requestTo(Matchers.startsWith(PROJECT + "/strings")))
                 .andExpect(queryParam("offset", "0"))
                 .andRespond(withSuccess("""
                         {"data":[{"data":{"id":1,"text":"One","identifier":"a"}},\
                         {"data":{"id":2,"text":"Two","identifier":"b"}}]}""", MediaType.APPLICATION_JSON));
-        server.expect(requestTo(Matchers.startsWith(PROJECT + "/files/661/strings")))
+        server.expect(requestTo(Matchers.startsWith(PROJECT + "/strings")))
                 .andExpect(queryParam("offset", "2"))
                 .andRespond(withSuccess("""
                         {"data":[{"data":{"id":3,"text":"Three","identifier":"c"}}]}""", MediaType.APPLICATION_JSON));
@@ -61,7 +63,7 @@ class CrowdinClientTest {
     @Test
     void approvedTranslationsExcludesATranslationThatHasNoMatchingApproval() {
         respond("/languages/kmr/translations", """
-                {"data":[{"data":{"id":42,"stringId":661,"text":"Temam"}}]}""");
+                {"data":[{"data":{"translationId":42,"stringId":661,"text":"Temam"}}]}""");
         respond("/approvals", """
                 {"data":[]}""");
         assertThat(crowdin(500).approvedTranslations("kmr", 661L)).isEmpty();
@@ -70,8 +72,8 @@ class CrowdinClientTest {
     @Test
     void approvedTranslationsKeepsOnlyTranslationsThatAppearInCrowdinsApprovalsList() {
         respond("/languages/kmr/translations", """
-                {"data":[{"data":{"id":42,"stringId":661,"text":"Temam"}},\
-                {"data":{"id":43,"stringId":662,"text":"Na"}}]}""");
+                {"data":[{"data":{"translationId":42,"stringId":661,"text":"Temam"}},\
+                {"data":{"translationId":43,"stringId":662,"text":"Na"}}]}""");
         respond("/approvals", """
                 {"data":[{"data":{"translationId":42}}]}""");
         List<CrowdinTranslation> approved = crowdin(500).approvedTranslations("kmr", 661L);

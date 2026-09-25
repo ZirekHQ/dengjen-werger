@@ -70,8 +70,10 @@ public class CrowdinClient {
 
     public List<CrowdinSourceString> sourceStrings(long fileId) {
         return paginate(
-                offset ->
-                        resource("files/" + fileId + "/strings", offset).build().toUri(),
+                offset -> resource("strings", offset)
+                        .queryParam("fileId", fileId)
+                        .build()
+                        .toUri(),
                 new ParameterizedTypeReference<>() {});
     }
 
@@ -95,7 +97,9 @@ public class CrowdinClient {
                 .stream()
                 .map(CrowdinApproval::translationId)
                 .collect(Collectors.toSet());
-        return translations.stream().filter(t -> approvedIds.contains(t.id())).toList();
+        return translations.stream()
+                .filter(t -> approvedIds.contains(t.translationId()))
+                .toList();
     }
 
     public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {

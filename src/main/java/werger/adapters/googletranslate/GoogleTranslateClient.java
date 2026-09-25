@@ -24,6 +24,9 @@ import tools.jackson.databind.json.JsonMapper;
 public class GoogleTranslateClient {
     private static final URI ENDPOINT = URI.create("https://translation.googleapis.com/language/translate/v2");
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    // Google's v2 Basic API caps one request at 128 strings and 100,000 bytes of body.
+    private static final int MAX_CHUNK_SIZE = 128;
+    private static final int MAX_REQUEST_BYTES = 100_000;
 
     private final RestClient httpClient;
     private final String apiKey;
@@ -39,6 +42,14 @@ public class GoogleTranslateClient {
     }
 
     public GoogleTranslateClient(RestClient httpClient, String apiKey, int chunkSize, int maxRequestBytes) {
+        if (chunkSize < 1 || chunkSize > MAX_CHUNK_SIZE) {
+            throw new IllegalArgumentException(
+                    "chunkSize must be within [1, " + MAX_CHUNK_SIZE + "], got " + chunkSize);
+        }
+        if (maxRequestBytes < 1 || maxRequestBytes > MAX_REQUEST_BYTES) {
+            throw new IllegalArgumentException(
+                    "maxRequestBytes must be within [1, " + MAX_REQUEST_BYTES + "], got " + maxRequestBytes);
+        }
         this.httpClient = httpClient;
         this.apiKey = apiKey;
         this.chunkSize = chunkSize;
@@ -101,8 +112,8 @@ public class GoogleTranslateClient {
                 .body(String.class);
         List<String> translated = parse(raw);
         if (translated.size() != chunk.size()) {
-            throw new IllegalStateException(
-                    "Google returned " + translated.size() + " translations for " + chunk.size() + " inputs");
+            throw new UnexpectedResponseShapeException(
+                    "Google returned " + translated.size() + " translations for " + chunk.size() + " inputs", null);
         }
         return translated;
     }
@@ -117,9 +128,15 @@ public class GoogleTranslateClient {
         if (envelope == null || envelope.data() == null || envelope.data().translations() == null) {
             throw new UnexpectedResponseShapeException("Google Translate response has no data.translations", null);
         }
-        return envelope.data().translations().stream()
-                .map(GoogleTranslation::translatedText)
-                .toList();
+        List<String> translated = new ArrayList<>();
+        for (GoogleTranslation translation : envelope.data().translations()) {
+            if (translation == null || translation.translatedText() == null) {
+                throw new UnexpectedResponseShapeException(
+                        "Google Translate response item has no translatedText", null);
+            }
+            translated.add(translation.translatedText());
+        }
+        return translated;
     }
 
     // Deliberately not fail-fast: that would fail the whole batch, discarding earlier successes, on one bad chunk.

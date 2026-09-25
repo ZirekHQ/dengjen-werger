@@ -1,5 +1,7 @@
 package werger.adapters.db;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.function.Function;
@@ -25,6 +27,9 @@ public record DbConfig(String host, int port, String user, String password, Stri
      * session, so a named statement prepared on one backend can be missing or collide on the next.
      */
     public String jdbcUrl() {
-        return "jdbc:postgresql://" + host + ":" + port + "/" + database + "?prepareThreshold=0";
+        // An IPv6 literal needs brackets to be parsed as a host, and pgJDBC URL-decodes the database name.
+        String urlHost = host.contains(":") && !host.startsWith("[") ? "[" + host + "]" : host;
+        String urlDatabase = URLEncoder.encode(database, StandardCharsets.UTF_8);
+        return "jdbc:postgresql://" + urlHost + ":" + port + "/" + urlDatabase + "?prepareThreshold=0";
     }
 }

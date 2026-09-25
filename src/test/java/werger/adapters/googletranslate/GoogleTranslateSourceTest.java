@@ -73,6 +73,13 @@ class GoogleTranslateSourceTest {
     }
 
     @Test
+    void translateBatchMapsATranslationCountMismatchToUnsupported() {
+        server.expect(requestTo(ENDPOINT)).andRespond(withSuccess("""
+                {"data":{"translations":[]}}""", MediaType.APPLICATION_JSON));
+        assertThat(errorOf(source.translateBatch(KURMANJI, List.of("OK")))).isInstanceOf(MtError.Unsupported.class);
+    }
+
+    @Test
     void translateBatchMapsA200ResponseThatIsntJsonToUnsupported() {
         server.expect(requestTo(ENDPOINT)).andRespond(withSuccess("not json", MediaType.TEXT_PLAIN));
         assertThat(errorOf(source.translateBatch(KURMANJI, List.of("OK")))).isInstanceOf(MtError.Unsupported.class);

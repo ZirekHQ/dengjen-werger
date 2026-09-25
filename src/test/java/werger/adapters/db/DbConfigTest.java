@@ -56,4 +56,10 @@ class DbConfigTest {
     void jdbcUrlDisablesServerSidePreparedStatementsForSupavisor() {
         assertThat(fromMap(ALL_PRESENT).jdbcUrl()).isEqualTo("jdbc:postgresql://localhost:5432/db?prepareThreshold=0");
     }
+
+    @Test
+    void jdbcUrlBracketsAnIpv6HostAndEncodesTheDatabaseName() {
+        DbConfig config = new DbConfig("::1", 5432, "user", "pass", "my?db");
+        assertThat(config.jdbcUrl()).isEqualTo("jdbc:postgresql://[::1]:5432/my%3Fdb?prepareThreshold=0");
+    }
 }

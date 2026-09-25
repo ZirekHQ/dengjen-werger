@@ -2,6 +2,7 @@ package werger.adapters.googletranslate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.springframework.test.web.client.ExpectedCount.manyTimes;
 import static org.springframework.test.web.client.ExpectedCount.never;
 import static org.springframework.test.web.client.ExpectedCount.times;
@@ -97,6 +98,24 @@ class GoogleTranslateClientTest {
         GoogleTranslateClient client = new GoogleTranslateClient(builder.build(), "test-key", 100, 5);
         assertThat(client.translate(List.of("a", "b"), "ku")).isEmpty();
         server.verify();
+    }
+
+    @Test
+    void theConstructorRejectsLimitsOutsideWhatGoogleAccepts() {
+        RestClient http = builder.build();
+        assertThatIllegalArgumentException().isThrownBy(() -> new GoogleTranslateClient(http, "k", 0, 100_000));
+        assertThatIllegalArgumentException().isThrownBy(() -> new GoogleTranslateClient(http, "k", 129, 100_000));
+        assertThatIllegalArgumentException().isThrownBy(() -> new GoogleTranslateClient(http, "k", 100, 0));
+        assertThatIllegalArgumentException().isThrownBy(() -> new GoogleTranslateClient(http, "k", 100, 100_001));
+    }
+
+    @Test
+    void aResponseItemWithoutTranslatedTextIsAnUnexpectedShape() {
+        server.expect(requestTo(ENDPOINT)).andRespond(ok("""
+                {"data":{"translations":[{}]}}"""));
+        GoogleTranslateClient client = new GoogleTranslateClient(builder.build(), "test-key");
+        assertThatExceptionOfType(UnexpectedResponseShapeException.class)
+                .isThrownBy(() -> client.translate(List.of("a"), "ku"));
     }
 
     @Test

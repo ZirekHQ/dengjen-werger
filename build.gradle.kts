@@ -56,6 +56,11 @@ dependencies {
     implementation(libs.spring.jdbc)
     implementation(libs.hikaricp)
     runtimeOnly(libs.postgresql)
+    constraints {
+        implementation(libs.tomcat.embed.core)
+        implementation(libs.tomcat.embed.el)
+        implementation(libs.tomcat.embed.websocket)
+    }
 }
 
 springBoot {
