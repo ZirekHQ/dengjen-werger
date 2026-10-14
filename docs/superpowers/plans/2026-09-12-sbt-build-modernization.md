@@ -275,8 +275,8 @@ git commit -m "refactor: split DbConfig parsing out of Db so it's unit-testable 
 **Files:**
 - Modify: `project/plugins.sbt`
 - Modify: `build.sbt` (add settings + aliases)
-- Modify: `.github/workflows/ci.yml` (the `unit` job's `run` step)
-- Modify: `.github/workflows/sonar.yml` (the compile step)
+- Modify: `.github/workflows/ci.yaml` (the `unit` job's `run` step)
+- Modify: `.github/workflows/sonar.yaml` (the compile step)
 - Modify: `sonar-project.properties`
 
 **Interfaces:** None new — this wires existing test suites into a gate; it doesn't add production code.
@@ -319,7 +319,7 @@ Add inside `root`'s `.settings(...)`:
 Run: `sbt --allow-empty coverage test coverageReport`
 Expected: `[info] Statement coverage.: 100.00%` (verified during planning: `Main` and `Db` excluded, `DbConfig` and `Routes` both fully tested — no coverage minimum failure).
 
-- [ ] **Step 4: Update `ci.yml`'s `unit` job**
+- [ ] **Step 4: Update `ci.yaml`'s `unit` job**
 
 Replace the `run` step in the `unit` job (currently `sbt --allow-empty test scalafmtCheckAll "scalafixAll --check"`) with two steps:
 
@@ -328,7 +328,7 @@ Replace the `run` step in the `unit` job (currently `sbt --allow-empty test scal
       - run: sbt --allow-empty lint
 ```
 
-- [ ] **Step 5: Update `sonar.yml`**
+- [ ] **Step 5: Update `sonar.yaml`**
 
 Replace:
 
@@ -353,7 +353,7 @@ sonar.scala.coverage.xmlReportPaths=target/scala-*/scoverage-report/scoverage.xm
 - [ ] **Step 7: Commit**
 
 ```bash
-git add project/plugins.sbt build.sbt .github/workflows/ci.yml .github/workflows/sonar.yml sonar-project.properties
+git add project/plugins.sbt build.sbt .github/workflows/ci.yaml .github/workflows/sonar.yaml sonar-project.properties
 git commit -m "build: add sbt-scoverage 80% gate, wire into CI/Sonar, add lint/fix/prep aliases"
 ```
 

@@ -103,7 +103,7 @@ the guard.
 
 ### CI
 
-`.github/workflows/ci.yml` splits its one step into two jobs, run
+`.github/workflows/ci.yaml` splits its one step into two jobs, run
 concurrently (no `needs` between them) for the fastest PR feedback;
 branch protection requiring both checks is what actually enforces that
 both pass before merge, not job ordering:
