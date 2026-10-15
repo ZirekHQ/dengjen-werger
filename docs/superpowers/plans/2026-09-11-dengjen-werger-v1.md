@@ -115,7 +115,7 @@ already works.
 - Create: `README.md`
 - Create: `CONTRIBUTING.md`
 - Create: `.gitignore`
-- Create: `.github/workflows/ci.yml`
+- Create: `.github/workflows/ci.yaml`
 
 **Interfaces:** none — this task produces no application code.
 
@@ -206,7 +206,7 @@ jobs:
 
 ```bash
 git checkout -b chore/repo-hygiene
-git add LICENSE README.md CONTRIBUTING.md .gitignore .github/workflows/ci.yml
+git add LICENSE README.md CONTRIBUTING.md .gitignore .github/workflows/ci.yaml
 git commit -m "chore: add license, readme, contributing guide, and CI"
 git push -u origin chore/repo-hygiene
 gh pr create --title "chore: repository hygiene" --body "Closes #25." --repo ZirekHQ/dengjen-werger

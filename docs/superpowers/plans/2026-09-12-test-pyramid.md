@@ -29,7 +29,7 @@ build.sbt                                                 # modify (Task 2): add
 src/it/scala/werger/adapters/db/DbPoolingSpec.scala       # create (Task 3): moved from src/test
 src/main/scala/werger/adapters/db/Db.scala                # modify (Task 4): buildPooled(lookup) replaces eager sys.env vals
 src/test/scala/werger/adapters/db/DbSpec.scala            # create (Task 4): unit test for buildPooled's failure mode
-.github/workflows/ci.yml                                  # modify (Task 5): split into unit + integration jobs
+.github/workflows/ci.yaml                                  # modify (Task 5): split into unit + integration jobs
 CONTRIBUTING.md                                           # modify (Task 5): add "Testing pyramid" section
 ```
 
@@ -320,14 +320,14 @@ git commit -m "fix: make Db.pooled fail through IO, not a fatal Error, on missin
 ### Task 5: CI split and `CONTRIBUTING.md` documentation
 
 **Files:**
-- Modify: `.github/workflows/ci.yml`
+- Modify: `.github/workflows/ci.yaml`
 - Modify: `CONTRIBUTING.md`
 
 **Interfaces:** none — this task wires already-built mechanism (Tasks 1-4) into CI and docs; it produces nothing later tasks consume.
 
 - [ ] **Step 1: Split the CI workflow into concurrent `unit` and `integration` jobs**
 
-Replace `.github/workflows/ci.yml` with:
+Replace `.github/workflows/ci.yaml` with:
 
 ```yaml
 name: CI
@@ -424,7 +424,7 @@ Expected: PASS (the skip-stub test) — this is the `integration` job's command,
 - [ ] **Step 4: Commit**
 
 ```bash
-git add .github/workflows/ci.yml CONTRIBUTING.md
+git add .github/workflows/ci.yaml CONTRIBUTING.md
 git commit -m "ci: split unit and integration jobs; document the testing pyramid"
 ```
 

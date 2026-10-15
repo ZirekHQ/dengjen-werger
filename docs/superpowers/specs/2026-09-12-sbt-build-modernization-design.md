@@ -33,7 +33,7 @@ being drafted; §2 below builds on that shape rather than replacing it.
 
 ## Non-goals
 
-- Reconciling `ci.yml`'s Java 25 vs `sonar.yml`'s Java 21 (pre-existing,
+- Reconciling `ci.yaml`'s Java 25 vs `sonar.yaml`'s Java 21 (pre-existing,
   unrelated to this work).
 - Raising coverage on `Main`/`Db` themselves — they're excluded from the
   gate (see below), not tested directly.
@@ -103,9 +103,9 @@ database. With `Routes` at 100% and `DbConfig.fromEnv` fully tested, both
 without padding.
 
 CI wiring:
-- `ci.yml`'s test step becomes `sbt coverage test coverageReport` (fails
+- `ci.yaml`'s test step becomes `sbt coverage test coverageReport` (fails
   the job under 80%, separate from the `sbt lint` step — see §7).
-- `sonar.yml` runs the same coverage command before the Sonar scan step.
+- `sonar.yaml` runs the same coverage command before the Sonar scan step.
 - `sonar-project.properties` gains:
   `sonar.scala.coverage.xmlReportPaths=target/scala-*/scoverage-report/scoverage.xml`
   (glob, not a pinned Scala version, so it survives a Scala version bump).
@@ -221,7 +221,7 @@ addCommandAlias("fix", ";scalafmtAll;scalafixAll")
 addCommandAlias("prep", ";fix;test")
 ```
 
-`ci.yml`'s single `sbt --allow-empty test scalafmtCheckAll "scalafixAll --check"`
+`ci.yaml`'s single `sbt --allow-empty test scalafmtCheckAll "scalafixAll --check"`
 step splits into two: `sbt coverage test coverageReport` (§2) and
 `sbt lint`.
 
