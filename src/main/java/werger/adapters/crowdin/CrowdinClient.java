@@ -79,12 +79,7 @@ public class CrowdinClient {
     }
 
     public List<CrowdinTranslation> approvedTranslations(String languageId, long fileId) {
-        List<CrowdinTranslation> translations = paginate(
-                offset -> resource("languages/" + languageId + "/translations", offset)
-                        .queryParam(FILE_ID, fileId)
-                        .build()
-                        .toUri(),
-                new ParameterizedTypeReference<CrowdinEnvelope<CrowdinTranslation>>() {});
+        List<CrowdinTranslation> translations = getTranslations(languageId, fileId);
         // /translations returns every submitted translation regardless of
         // approval state; Crowdin has no approval-status filter on that
         // endpoint, so the approved subset has to come from /approvals instead.
@@ -101,6 +96,15 @@ public class CrowdinClient {
         return translations.stream()
                 .filter(t -> approvedIds.contains(t.translationId()))
                 .toList();
+    }
+
+    public List<CrowdinTranslation> getTranslations(String languageId, long fileId) {
+        return paginate(
+                offset -> resource("languages/" + languageId + "/translations", offset)
+                        .queryParam(FILE_ID, fileId)
+                        .build()
+                        .toUri(),
+                new ParameterizedTypeReference<CrowdinEnvelope<CrowdinTranslation>>() {});
     }
 
     public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
