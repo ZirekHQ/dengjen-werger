@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.tuple;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
@@ -46,12 +48,20 @@ class CrowdinSourceTest {
 
         @Override
         public List<CrowdinTranslation> getTranslations(String languageId, long fileId) {
+            calls.add("getTranslations");
             return languageId.equals("kmr") && fileId == FILE_ID ? submitted : List.of();
         }
 
         @Override
         public List<CrowdinSourceString> sourceStrings(long fileId) {
             return fileId == FILE_ID ? strings : List.of();
+        }
+
+        @Override
+        public Set<Long> approvedTranslationIds(String languageId, long fileId) {
+            return approvedTranslations(languageId, fileId).stream()
+                    .map(CrowdinTranslation::translationId)
+                    .collect(Collectors.toSet());
         }
 
         @Override
@@ -141,6 +151,15 @@ class CrowdinSourceTest {
     }
 
     @Test
+    void fetchWorkItemsFetchesTranslationsOncePerPoll() {
+        var client = new StubClient(List.of(string(1, "One")), List.of(approved(1, "Yek")));
+
+        source(client).fetchWorkItems(KMR);
+
+        assertThat(client.calls).containsOnlyOnce("getTranslations");
+    }
+
+    @Test
     void fetchWorkItemsReturnsNothingWhenEveryStringIsApproved() {
         var client = new StubClient(List.of(string(1, "One")), List.of(approved(1, "Yek")));
 
@@ -203,5 +222,29 @@ class CrowdinSourceTest {
         assertThat(source(networkError).submit(item("42"), "Silav"))
                 .isInstanceOfSatisfying(
                         Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
+    }
+
+    @Test
+    void submitReturnsRejectedWithoutCallingCrowdinWhenExternalIdIsNotNumeric() {
+        var client = new StubClient(List.of(), List.of());
+
+        var result = source(client).submit(item("abc"), "Silav");
+
+        assertThat(result)
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
+        assertThat(client.calls).isEmpty();
+    }
+
+    @Test
+    void submitReturnsTransientWhenCrowdinAnswers408Or429() {
+        for (HttpStatus status : List.of(HttpStatus.REQUEST_TIMEOUT, HttpStatus.TOO_MANY_REQUESTS)) {
+            var client = new StubClient(List.of(), List.of());
+            client.createFailure = new RestClientResponseException("retry", status, status.name(), null, null, null);
+
+            assertThat(source(client).submit(item("42"), "Silav"))
+                    .isInstanceOfSatisfying(
+                            Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
+        }
     }
 }
