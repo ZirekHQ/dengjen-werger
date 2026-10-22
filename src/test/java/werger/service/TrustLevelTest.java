@@ -4,21 +4,36 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static werger.domain.ReviewVerdict.APPROVED;
 import static werger.domain.ReviewVerdict.REJECTED;
 
-import java.util.Collections;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import werger.domain.Review;
 import werger.domain.ReviewVerdict;
 import werger.domain.Role;
 
 class TrustLevelTest {
-    private static List<ReviewVerdict> run(int count, ReviewVerdict verdict) {
-        return Collections.nCopies(count, verdict);
+    private static final Instant BASE = Instant.parse("2026-09-01T00:00:00Z");
+
+    private static Review review(ReviewVerdict verdict, int dayOffset) {
+        return new Review(
+                UUID.randomUUID(), UUID.randomUUID(), verdict, Optional.empty(), BASE.plus(dayOffset, ChronoUnit.DAYS));
     }
 
-    /** Oldest first, matching how a repo would return a contributor's decided submissions. */
-    private static List<ReviewVerdict> then(List<ReviewVerdict> older, List<ReviewVerdict> newer) {
-        return Stream.concat(older.stream(), newer.stream()).toList();
+    private static List<Review> run(int count, ReviewVerdict verdict) {
+        return IntStream.range(0, count).mapToObj(day -> review(verdict, day)).toList();
+    }
+
+    /** Places {@code newer} after {@code older} in time, regardless of list order. */
+    private static List<Review> then(List<Review> older, List<Review> newer) {
+        List<Review> shifted = newer.stream()
+                .map(r -> review(r.verdict(), 1_000 + newer.indexOf(r)))
+                .toList();
+        return Stream.concat(older.stream(), shifted.stream()).toList();
     }
 
     @Test
@@ -39,15 +54,15 @@ class TrustLevelTest {
 
     @Test
     void trustComesFromTheSampleSizeNotAFixedCount() {
-        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, run(5, APPROVED))).isFalse();
-        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, run(6, APPROVED))).isTrue();
+        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, run(8, APPROVED))).isFalse();
+        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, run(9, APPROVED))).isTrue();
     }
 
     @Test
     void oneRejectionDelaysTrustInsteadOfBlockingIt() {
-        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, then(run(9, APPROVED), run(1, REJECTED))))
+        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, then(run(13, APPROVED), run(1, REJECTED))))
                 .isFalse();
-        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, then(run(10, APPROVED), run(1, REJECTED))))
+        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, then(run(14, APPROVED), run(1, REJECTED))))
                 .isTrue();
     }
 
@@ -76,5 +91,12 @@ class TrustLevelTest {
         double large = TrustLevel.trustScore(run(20, APPROVED));
 
         assertThat(large).isGreaterThan(small).isLessThan(1.0);
+    }
+
+    @Test
+    void inputOrderDoesNotChangeWhichOutcomesAreTheLatest() {
+        List<Review> recentFirst = then(run(20, APPROVED), run(10, REJECTED)).reversed();
+
+        assertThat(TrustLevel.isTrusted(Role.CONTRIBUTOR, recentFirst)).isFalse();
     }
 }

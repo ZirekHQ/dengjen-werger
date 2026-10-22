@@ -15,9 +15,13 @@ class StreakCalculatorTest {
         return new StreakState(USER, current, longest, Optional.of(LocalDate.parse(lastMet)));
     }
 
+    private static StreakState met(StreakState state, String period, String previousPeriod) {
+        return StreakCalculator.onPeriodMet(state, LocalDate.parse(period), LocalDate.parse(previousPeriod));
+    }
+
     @Test
     void consecutivePeriodExtendsTheStreak() {
-        var updated = StreakCalculator.onPeriodMet(state(3, 3, "2026-09-10"), LocalDate.parse("2026-09-11"));
+        var updated = met(state(3, 3, "2026-09-10"), "2026-09-11", "2026-09-10");
 
         assertThat(updated.current()).isEqualTo(4);
         assertThat(updated.longest()).isEqualTo(4);
@@ -26,7 +30,7 @@ class StreakCalculatorTest {
 
     @Test
     void gapResetsCurrentButKeepsLongest() {
-        var updated = StreakCalculator.onPeriodMet(state(5, 5, "2026-09-05"), LocalDate.parse("2026-09-11"));
+        var updated = met(state(5, 5, "2026-09-05"), "2026-09-11", "2026-09-10");
 
         assertThat(updated.current()).isEqualTo(1);
         assertThat(updated.longest()).isEqualTo(5);
@@ -36,15 +40,14 @@ class StreakCalculatorTest {
     void secondCallForAnAlreadyMetPeriodIsANoOp() {
         var before = state(4, 4, "2026-09-11");
 
-        assertThat(StreakCalculator.onPeriodMet(before, LocalDate.parse("2026-09-11")))
-                .isEqualTo(before);
+        assertThat(met(before, "2026-09-11", "2026-09-10")).isEqualTo(before);
     }
 
     @Test
     void firstEverPeriodStartsAStreakOfOne() {
         var fresh = new StreakState(USER, 0, 0, Optional.empty());
 
-        var updated = StreakCalculator.onPeriodMet(fresh, LocalDate.parse("2026-09-11"));
+        var updated = met(fresh, "2026-09-11", "2026-09-10");
 
         assertThat(updated.current()).isEqualTo(1);
         assertThat(updated.longest()).isEqualTo(1);
@@ -52,7 +55,7 @@ class StreakCalculatorTest {
 
     @Test
     void extendingBelowTheLongestLeavesLongestUntouched() {
-        var updated = StreakCalculator.onPeriodMet(state(2, 9, "2026-09-10"), LocalDate.parse("2026-09-11"));
+        var updated = met(state(2, 9, "2026-09-10"), "2026-09-11", "2026-09-10");
 
         assertThat(updated.current()).isEqualTo(3);
         assertThat(updated.longest()).isEqualTo(9);
@@ -62,7 +65,21 @@ class StreakCalculatorTest {
     void aPeriodOlderThanTheLastMetOneIsIgnored() {
         var before = state(4, 4, "2026-09-11");
 
-        assertThat(StreakCalculator.onPeriodMet(before, LocalDate.parse("2026-09-08")))
-                .isEqualTo(before);
+        assertThat(met(before, "2026-09-08", "2026-09-10")).isEqualTo(before);
+    }
+
+    @Test
+    void weeklyStreakExtendsWhenTheLastMetPeriodIsThePreviousWeek() {
+        var updated = met(state(2, 2, "2026-08-31"), "2026-09-07", "2026-08-31");
+
+        assertThat(updated.current()).isEqualTo(3);
+    }
+
+    @Test
+    void monthlyStreakResetsWhenAMonthWasSkipped() {
+        var updated = met(state(4, 4, "2026-07-01"), "2026-09-01", "2026-08-01");
+
+        assertThat(updated.current()).isEqualTo(1);
+        assertThat(updated.longest()).isEqualTo(4);
     }
 }
