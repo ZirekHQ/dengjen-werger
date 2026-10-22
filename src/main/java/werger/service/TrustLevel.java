@@ -1,6 +1,8 @@
 package werger.service;
 
+import java.util.Comparator;
 import java.util.List;
+import werger.domain.Review;
 import werger.domain.ReviewVerdict;
 import werger.domain.Role;
 
@@ -16,13 +18,13 @@ import werger.domain.Role;
  */
 public final class TrustLevel {
     static final int WINDOW = 20;
-    static final double TRUSTED_SCORE = 0.6;
+    static final double TRUSTED_SCORE = 0.7;
     private static final double Z = 1.96; // 95% confidence
 
     private TrustLevel() {}
 
-    /** {@code outcomes} lists the verdicts on the user's decided submissions, oldest first. */
-    public static boolean isTrusted(Role role, List<ReviewVerdict> outcomes) {
+    /** {@code outcomes} are the reviews of the user's decided submissions, in any order. */
+    public static boolean isTrusted(Role role, List<Review> outcomes) {
         return switch (role) {
             case MAINTAINER, REVIEWER -> true;
             case CONTRIBUTOR -> trustScore(outcomes) >= TRUSTED_SCORE;
@@ -30,13 +32,17 @@ public final class TrustLevel {
     }
 
     /** A conservative approval rate in [0, 1): 0 with no history, approaching 1 only with a long clean record. */
-    public static double trustScore(List<ReviewVerdict> outcomes) {
+    public static double trustScore(List<Review> outcomes) {
         List<ReviewVerdict> recent = lastDecided(outcomes);
         return recent.isEmpty() ? 0.0 : wilsonLowerBound(approvedIn(recent), recent.size());
     }
 
-    private static List<ReviewVerdict> lastDecided(List<ReviewVerdict> outcomes) {
-        return outcomes.subList(Math.max(0, outcomes.size() - WINDOW), outcomes.size());
+    private static List<ReviewVerdict> lastDecided(List<Review> outcomes) {
+        return outcomes.stream()
+                .sorted(Comparator.comparing(Review::reviewedAt).reversed())
+                .limit(WINDOW)
+                .map(Review::verdict)
+                .toList();
     }
 
     private static long approvedIn(List<ReviewVerdict> outcomes) {
