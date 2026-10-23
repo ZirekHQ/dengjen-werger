@@ -136,8 +136,11 @@ jacoco {
 
 val coverageExclusions = listOf("werger/WergerApplication*", "werger/adapters/db/Db.class")
 
+// The coverage gate below stays on unit-test data only; this report also includes integration tests for Sonar.
 tasks.jacocoTestReport {
     dependsOn(tasks.test)
+    mustRunAfter("integrationTest")
+    executionData.setFrom(fileTree(layout.buildDirectory.dir("jacoco")) { include("*.exec") })
     reports {
         xml.required = true
         html.required = true
