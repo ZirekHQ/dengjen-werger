@@ -147,13 +147,25 @@ class WorkItemRepoIT {
         WorkItem item = newItem();
         repo.tryLease(item.id(), newUser(), Instant.now().plusSeconds(1800));
 
-        repo.release(item.id());
+        boolean released = repo.release(item.id());
 
+        assertThat(released).isTrue();
         assertThat(statusOf(item.id())).isEqualTo("available");
         assertThat(jdbc.queryForObject("select leased_by from work_items where id = ?", UUID.class, item.id()))
                 .isNull();
         assertThat(repo.tryLease(item.id(), newUser(), Instant.now().plusSeconds(1800)))
                 .isTrue();
+    }
+
+    @Test
+    void releaseLeavesAnItemThatIsNotInProgressUntouched() {
+        WorkItem item = newItem();
+        jdbc.update("update work_items set status = 'pending_review' where id = ?", item.id());
+
+        boolean released = repo.release(item.id());
+
+        assertThat(released).isFalse();
+        assertThat(statusOf(item.id())).isEqualTo("pending_review");
     }
 
     @Test

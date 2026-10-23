@@ -44,12 +44,14 @@ public class WorkItemRepo {
         return rows == 1;
     }
 
-    public void release(UUID id) {
-        jdbc.update("""
+    /** Returns true only if the item was leased; an item in any other state is left untouched. */
+    public boolean release(UUID id) {
+        int rows = jdbc.update("""
                 update work_items
                 set status = 'available', leased_by = null, lease_expires_at = null
-                where id = ?
+                where id = ? and status = 'in_progress'
                 """, id);
+        return rows == 1;
     }
 
     /** Returns leased items whose lease ended before {@code now} to the pool, and reports how many were released. */
