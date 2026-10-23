@@ -10,6 +10,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -236,15 +238,16 @@ class CrowdinSourceTest {
         assertThat(client.calls).isEmpty();
     }
 
-    @Test
-    void submitReturnsTransientWhenCrowdinAnswers408Or429() {
-        for (HttpStatus status : List.of(HttpStatus.REQUEST_TIMEOUT, HttpStatus.TOO_MANY_REQUESTS)) {
-            var client = new StubClient(List.of(), List.of());
-            client.createFailure = new RestClientResponseException("retry", status, status.name(), null, null, null);
+    @ParameterizedTest
+    @EnumSource(
+            value = HttpStatus.class,
+            names = {"REQUEST_TIMEOUT", "TOO_MANY_REQUESTS"})
+    void submitReturnsTransientWhenCrowdinAnswersARetryable4xx(HttpStatus status) {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure = new RestClientResponseException("retry", status, status.name(), null, null, null);
 
-            assertThat(source(client).submit(item("42"), "Silav"))
-                    .isInstanceOfSatisfying(
-                            Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
-        }
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
     }
 }
