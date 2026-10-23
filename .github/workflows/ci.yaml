@@ -34,11 +34,12 @@ jobs:
           java-version: "25"
           cache: gradle
       # Fork PRs get no secrets, so run a local database.
+      - name: Generate a throwaway database password
+        run: echo "DB_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
       - run: docker compose up -d --build --wait
       - run: ./gradlew integrationTest
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
           DB_USER: werger
-          DB_PASSWORD: werger
           DB_NAME: werger
