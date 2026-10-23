@@ -47,6 +47,10 @@ class WorkItemRepoIT {
     @AfterEach
     void cleanUp() {
         if (jdbc != null) {
+            jdbc.update("update work_items set pending_submission_id = null where source_adapter = ?", ADAPTER);
+            jdbc.update(
+                    "delete from submissions where work_item_id in (select id from work_items where source_adapter = ?)",
+                    ADAPTER);
             jdbc.update("delete from work_items where source_adapter = ?", ADAPTER);
             jdbc.update("delete from users where auth_provider_ref like ?", ADAPTER + "%");
             pool.close();
@@ -211,6 +215,124 @@ class WorkItemRepoIT {
         assertThat(statusOf(active.id())).isEqualTo("in_progress");
         assertThat(repo.tryLease(expired.id(), newUser(), now.plusSeconds(1800)))
                 .isTrue();
+    }
+
+    private void awaitReview(UUID item, UUID submission) {
+        jdbc.update(
+                "update work_items set status = 'pending_review', pending_submission_id = ? where id = ?",
+                submission,
+                item);
+    }
+
+    private void setStatus(UUID id, String status) {
+        jdbc.update("update work_items set status = ?::work_item_status where id = ?", status, id);
+    }
+
+    @Test
+    void findMapsAnInProgressItemWithItsLease() {
+        WorkItem item = newItem();
+        UUID user = newUser();
+        Instant expiry = Instant.parse("2026-09-01T12:30:00Z");
+        repo.tryLease(item.id(), user, expiry);
+
+        assertThat(repo.find(item.id()))
+                .hasValueSatisfying(
+                        found -> assertThat(found.status()).isEqualTo(new WorkItemStatus.InProgress(user, expiry)));
+    }
+
+    @Test
+    void findReturnsEmptyForAnUnknownId() {
+        assertThat(repo.find(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void moveToPendingReviewRequiresTheLeaseHolder() {
+        WorkItem item = newItem();
+        UUID holder = newUser();
+        UUID submission = newSubmission(item.id(), holder);
+        repo.tryLease(item.id(), holder, Instant.now().plusSeconds(1800));
+
+        assertThat(repo.moveToPendingReview(item.id(), newUser(), submission)).isFalse();
+        assertThat(statusOf(item.id())).isEqualTo("in_progress");
+        assertThat(repo.moveToPendingReview(item.id(), holder, submission)).isTrue();
+        assertThat(repo.find(item.id()).orElseThrow().status()).isEqualTo(new WorkItemStatus.PendingReview(submission));
+    }
+
+    @Test
+    void markApprovedOnlyFromPendingReviewForTheCurrentSubmission() {
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), newUser());
+
+        assertThat(repo.markApproved(item.id(), submission)).isFalse();
+        awaitReview(item.id(), submission);
+        assertThat(repo.markApproved(item.id(), UUID.randomUUID())).isFalse();
+        assertThat(repo.markApproved(item.id(), submission)).isTrue();
+        assertThat(statusOf(item.id())).isEqualTo("approved");
+    }
+
+    @Test
+    void moveToRevisionPendingStoresSubmitterCommentAndDeadline() {
+        WorkItem item = newItem();
+        UUID submitter = newUser();
+        UUID submission = newSubmission(item.id(), submitter);
+        Instant deadline = Instant.parse("2026-09-03T12:00:00Z");
+        awaitReview(item.id(), submission);
+
+        assertThat(repo.moveToRevisionPending(
+                        item.id(), UUID.randomUUID(), submitter, Optional.of("wrong register"), deadline))
+                .isFalse();
+        assertThat(repo.moveToRevisionPending(
+                        item.id(), submission, submitter, Optional.of("wrong register"), deadline))
+                .isTrue();
+        assertThat(repo.find(item.id()).orElseThrow().status())
+                .isEqualTo(new WorkItemStatus.RevisionPending(submitter, "wrong register", deadline));
+    }
+
+    @Test
+    void moveToRevisionPendingAcceptsNoComment() {
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), newUser());
+        awaitReview(item.id(), submission);
+
+        repo.moveToRevisionPending(
+                item.id(),
+                submission,
+                newUser(),
+                Optional.empty(),
+                Instant.now().plusSeconds(60));
+
+        assertThat(repo.find(item.id()).orElseThrow().status())
+                .isInstanceOfSatisfying(
+                        WorkItemStatus.RevisionPending.class,
+                        revision -> assertThat(revision.reviewerComment()).isEmpty());
+    }
+
+    @Test
+    void reclaimForRevisionOnlyBySubmitterBeforeTheDeadline() {
+        WorkItem item = newItem();
+        UUID submitter = newUser();
+        Instant now = Instant.now();
+        UUID submission = newSubmission(item.id(), submitter);
+        awaitReview(item.id(), submission);
+        repo.moveToRevisionPending(item.id(), submission, submitter, Optional.empty(), now.plusSeconds(3600));
+
+        assertThat(repo.reclaimForRevision(item.id(), newUser(), now, now.plusSeconds(1800)))
+                .isFalse();
+        assertThat(repo.reclaimForRevision(item.id(), submitter, now.plusSeconds(7200), now.plusSeconds(9000)))
+                .isFalse();
+        assertThat(repo.reclaimForRevision(item.id(), submitter, now, now.plusSeconds(1800)))
+                .isTrue();
+        assertThat(repo.find(item.id()).orElseThrow().status()).isInstanceOf(WorkItemStatus.InProgress.class);
+    }
+
+    private UUID newSubmission(UUID workItem, UUID submitter) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "insert into submissions (id, work_item_id, submitter_id, proposed_translation) values (?, ?, ?, 'x')",
+                id,
+                workItem,
+                submitter);
+        return id;
     }
 
     private static boolean get(Future<Boolean> future) {
