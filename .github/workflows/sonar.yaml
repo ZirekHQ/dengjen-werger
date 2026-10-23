@@ -34,7 +34,15 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: gradle
-      - run: ./gradlew test jacocoTestReport
+      - run: docker compose up -d --build --wait
+      # integrationTest feeds the SQL repositories into the coverage report.
+      - run: ./gradlew test integrationTest jacocoTestReport
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: werger
+          DB_PASSWORD: werger
+          DB_NAME: werger
 
       - name: SonarQube scan
         if: env.SONAR_TOKEN != ''
