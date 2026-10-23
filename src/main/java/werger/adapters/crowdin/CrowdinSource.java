@@ -58,14 +58,13 @@ public class CrowdinSource implements TranslationSource {
 
     @Override
     public Result<SourceError, Void> submit(WorkItem item, String translation) {
-        return parseStringId(item.externalId())
-                .fold(error -> Result.err(error), stringId -> create(item, stringId, translation));
+        return parseStringId(item.externalId()).fold(Result::err, stringId -> create(item, stringId, translation));
     }
 
     private static Result<SourceError, Long> parseStringId(String externalId) {
         try {
             return Result.ok(Long.parseLong(externalId));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return Result.err(new SourceError.Rejected("Crowdin string id is not numeric: " + externalId));
         }
     }
