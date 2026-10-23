@@ -37,6 +37,21 @@ class CommitmentEvaluatorTest {
     }
 
     @Test
+    void proRatingUsesTheRealLengthOfTheSpringForwardDay() {
+        ZoneId newYork = ZoneId.of("America/New_York");
+        Instant midpoint = Instant.parse("2026-03-08T16:30:00Z"); // start 05:00Z + 11.5h, half of the 23h day
+
+        assertThat(CommitmentEvaluator.isOnTrack(CommitmentTier.LIGHT, 0, 0, midpoint.minusSeconds(60), newYork))
+                .isFalse();
+        assertThat(CommitmentEvaluator.isOnTrack(CommitmentTier.LIGHT, 0, 1, midpoint, newYork))
+                .isTrue();
+        assertThat(CommitmentEvaluator.isOnTrack(CommitmentTier.LIGHT, 0, 1, midpoint.plusSeconds(60), newYork))
+                .isFalse();
+        assertThat(CommitmentEvaluator.isOnTrack(CommitmentTier.LIGHT, 0, 2, midpoint.plusSeconds(60), newYork))
+                .isTrue();
+    }
+
+    @Test
     void mediumPeriodIsTheMondayStartedCalendarWeek() {
         PeriodWindow window = CommitmentEvaluator.periodAt(CommitmentTier.MEDIUM, START, UTC);
 
