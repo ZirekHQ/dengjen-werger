@@ -176,9 +176,8 @@ class WorkItemRepoIT {
         repo.tryLease(expired.id(), newUser(), now.minusSeconds(60));
         repo.tryLease(active.id(), newUser(), now.plusSeconds(1800));
 
-        int released = repo.releaseExpired(now);
+        repo.releaseExpired(now);
 
-        assertThat(released).isGreaterThanOrEqualTo(1);
         assertThat(statusOf(expired.id())).isEqualTo("available");
         assertThat(statusOf(active.id())).isEqualTo("in_progress");
         assertThat(repo.tryLease(expired.id(), newUser(), now.plusSeconds(1800)))

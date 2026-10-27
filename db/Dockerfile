@@ -1,5 +1,5 @@
 FROM postgres:17
 
-COPY --chown=postgres:postgres schema.sql /docker-entrypoint-initdb.d/schema.sql
+COPY --chown=postgres:postgres migrations/*.sql /docker-entrypoint-initdb.d/
 
 USER postgres
