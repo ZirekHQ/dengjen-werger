@@ -82,6 +82,20 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void insertReturnsTheStatusItStored() {
+        WorkItem stored = repo.insert(new WorkItem(
+                UUID.randomUUID(),
+                ADAPTER,
+                "ext-" + UUID.randomUUID(),
+                "kmr",
+                "OK",
+                Optional.empty(),
+                new WorkItemStatus.Approved()));
+
+        assertThat(stored.status()).isEqualTo(new WorkItemStatus.Available());
+    }
+
+    @Test
     void insertStoresTheDraftText() {
         WorkItem item = repo.insert(new WorkItem(
                 UUID.randomUUID(),
