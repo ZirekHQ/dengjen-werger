@@ -140,7 +140,7 @@ val coverageExclusions = listOf("werger/WergerApplication*", "werger/adapters/db
 tasks.jacocoTestReport {
     dependsOn(tasks.test)
     mustRunAfter("integrationTest")
-    executionData.setFrom(fileTree(layout.buildDirectory.dir("jacoco")) { include("*.exec") })
+    executionData.setFrom(layout.buildDirectory.files("jacoco/test.exec", "jacoco/integrationTest.exec"))
     reports {
         xml.required = true
         html.required = true
