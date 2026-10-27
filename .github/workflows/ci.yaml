@@ -33,10 +33,13 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: gradle
+      # Fork PRs get no secrets, so run a local database.
+      - name: Generate a throwaway database password
+        run: echo "DB_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+      - run: docker compose up -d --build --wait
       - run: ./gradlew integrationTest
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: werger
+          DB_NAME: werger
