@@ -79,4 +79,36 @@ class CrowdinClientTest {
         List<CrowdinTranslation> approved = crowdin(500).approvedTranslations("kmr", 661L);
         assertThat(approved).extracting(CrowdinTranslation::text).containsExactly("Temam");
     }
+
+    private static final String PLURAL_TRANSLATION = """
+            {"data":[{"data":{"stringId":700,"contentType":"application/vnd.crowdin.text+plural","plurals":[\
+            {"translationId":71,"pluralForm":"one","text":"%d pirtûk"},\
+            {"translationId":72,"pluralForm":"other","text":"%d pirtûk (pir)"}]}}]}""";
+
+    @Test
+    void getTranslationsFlattensEachPluralFormIntoItsOwnTranslation() {
+        respond("/languages/kmr/translations", PLURAL_TRANSLATION);
+        assertThat(crowdin(500).getTranslations("kmr", 661L))
+                .containsExactly(
+                        new CrowdinTranslation(71L, 700L, "%d pirtûk"),
+                        new CrowdinTranslation(72L, 700L, "%d pirtûk (pir)"));
+    }
+
+    @Test
+    void approvedTranslationsKeepsAnApprovedPluralForm() {
+        respond("/languages/kmr/translations", PLURAL_TRANSLATION);
+        respond("/approvals", """
+                {"data":[{"data":{"translationId":72}}]}""");
+        assertThat(crowdin(500).approvedTranslations("kmr", 661L))
+                .containsExactly(new CrowdinTranslation(72L, 700L, "%d pirtûk (pir)"));
+    }
+
+    @Test
+    void paginationCountsCrowdinsRowsNotTheFlattenedPluralForms() {
+        server.expect(requestTo(Matchers.startsWith(PROJECT + "/languages/kmr/translations")))
+                .andExpect(queryParam("offset", "0"))
+                .andRespond(withSuccess(PLURAL_TRANSLATION, MediaType.APPLICATION_JSON));
+        assertThat(crowdin(2).getTranslations("kmr", 661L)).hasSize(2);
+        server.verify();
+    }
 }
