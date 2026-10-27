@@ -52,13 +52,13 @@ public class WorkItemRepo {
         return rows == 1;
     }
 
-    /** Returns true only if the item was leased; an item in any other state is left untouched. */
-    public boolean release(UUID id) {
+    /** Returns true only if {@code userId} holds the lease; an item in any other state or held by someone else is left untouched. */
+    public boolean release(UUID id, UUID userId) {
         int rows = jdbc.update("""
                 update work_items
                 set status = 'available', leased_by = null, lease_expires_at = null
-                where id = ? and status = 'in_progress'
-                """, id);
+                where id = ? and status = 'in_progress' and leased_by = ?
+                """, id, userId);
         return rows == 1;
     }
 

@@ -28,7 +28,7 @@ class WorkItemRepoIT {
     private JdbcTemplate jdbc;
     private WorkItemRepo repo;
 
-    // GitHub passes secrets as empty strings on fork PRs, so a non-empty check is needed, not mere presence.
+    // Without a configured database the test is skipped rather than failed.
     private static boolean hasCredentials() {
         return List.of("DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME").stream().allMatch(name -> {
             String value = System.getenv(name);
@@ -159,9 +159,10 @@ class WorkItemRepoIT {
     @Test
     void releaseMakesTheItemAvailableAndClearsTheLease() {
         WorkItem item = newItem();
-        repo.tryLease(item.id(), newUser(), Instant.now().plusSeconds(1800));
+        UUID holder = newUser();
+        repo.tryLease(item.id(), holder, Instant.now().plusSeconds(1800));
 
-        boolean released = repo.release(item.id());
+        boolean released = repo.release(item.id(), holder);
 
         assertThat(released).isTrue();
         assertThat(statusOf(item.id())).isEqualTo("available");
@@ -176,10 +177,24 @@ class WorkItemRepoIT {
         WorkItem item = newItem();
         jdbc.update("update work_items set status = 'pending_review' where id = ?", item.id());
 
-        boolean released = repo.release(item.id());
+        boolean released = repo.release(item.id(), newUser());
 
         assertThat(released).isFalse();
         assertThat(statusOf(item.id())).isEqualTo("pending_review");
+    }
+
+    @Test
+    void releaseLeavesAnItemLeasedToSomeoneElse() {
+        WorkItem item = newItem();
+        UUID holder = newUser();
+        repo.tryLease(item.id(), holder, Instant.now().plusSeconds(1800));
+
+        boolean released = repo.release(item.id(), newUser());
+
+        assertThat(released).isFalse();
+        assertThat(statusOf(item.id())).isEqualTo("in_progress");
+        assertThat(jdbc.queryForObject("select leased_by from work_items where id = ?", UUID.class, item.id()))
+                .isEqualTo(holder);
     }
 
     @Test
