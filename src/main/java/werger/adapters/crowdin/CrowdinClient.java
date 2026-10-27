@@ -79,16 +79,17 @@ public class CrowdinClient {
     }
 
     public List<CrowdinTranslation> approvedTranslations(String languageId, long fileId) {
-        List<CrowdinTranslation> translations = paginate(
-                offset -> resource("languages/" + languageId + "/translations", offset)
-                        .queryParam(FILE_ID, fileId)
-                        .build()
-                        .toUri(),
-                new ParameterizedTypeReference<CrowdinEnvelope<CrowdinTranslation>>() {});
-        // /translations returns every submitted translation regardless of
-        // approval state; Crowdin has no approval-status filter on that
-        // endpoint, so the approved subset has to come from /approvals instead.
-        Set<Long> approvedIds = paginate(
+        Set<Long> approvedIds = approvedTranslationIds(languageId, fileId);
+        return getTranslations(languageId, fileId).stream()
+                .filter(t -> approvedIds.contains(t.translationId()))
+                .toList();
+    }
+
+    // /translations returns every submitted translation regardless of
+    // approval state; Crowdin has no approval-status filter on that
+    // endpoint, so the approved subset has to come from /approvals instead.
+    public Set<Long> approvedTranslationIds(String languageId, long fileId) {
+        return paginate(
                         offset -> resource("approvals", offset)
                                 .queryParam(FILE_ID, fileId)
                                 .queryParam("languageId", languageId)
@@ -98,9 +99,15 @@ public class CrowdinClient {
                 .stream()
                 .map(CrowdinApproval::translationId)
                 .collect(Collectors.toSet());
-        return translations.stream()
-                .filter(t -> approvedIds.contains(t.translationId()))
-                .toList();
+    }
+
+    public List<CrowdinTranslation> getTranslations(String languageId, long fileId) {
+        return paginate(
+                offset -> resource("languages/" + languageId + "/translations", offset)
+                        .queryParam(FILE_ID, fileId)
+                        .build()
+                        .toUri(),
+                new ParameterizedTypeReference<CrowdinEnvelope<CrowdinTranslation>>() {});
     }
 
     public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
