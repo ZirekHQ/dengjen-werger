@@ -23,8 +23,8 @@ about them.
 |4. Domain model |`Language`, `User`, `Commitment`, `WorkItem`, etc. |Done 
 |5. `TranslationSource` port + Crowdin codecs |Port trait, JSON codecs |Done 
 |6. Crowdin client — read path |Source strings, approved translations |Done 
-|7. Crowdin client — write path |`submit`/`approve`, guarded live integration test |Planned 
-|8. `CrowdinSource` |`TranslationSource` implementation |Planned 
+|7. Crowdin client — write path |`submit`/`approve`, guarded live integration test |Done 
+|8. `CrowdinSource` |`TranslationSource` implementation |Done 
 |===
 
 == Landed alongside Milestone 1: Machine-Translation Draft Assist
