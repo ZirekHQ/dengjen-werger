@@ -224,10 +224,6 @@ class WorkItemRepoIT {
                 item);
     }
 
-    private void setStatus(UUID id, String status) {
-        jdbc.update("update work_items set status = ?::work_item_status where id = ?", status, id);
-    }
-
     @Test
     void findMapsAnInProgressItemWithItsLease() {
         WorkItem item = newItem();

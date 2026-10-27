@@ -18,8 +18,12 @@ final class NoTransactions implements PlatformTransactionManager {
     }
 
     @Override
-    public void commit(TransactionStatus status) {}
+    public void commit(TransactionStatus status) {
+        // Nothing to commit: no transaction was opened.
+    }
 
     @Override
-    public void rollback(TransactionStatus status) {}
+    public void rollback(TransactionStatus status) {
+        // Nothing to roll back: no transaction was opened.
+    }
 }
