@@ -249,14 +249,15 @@ one person operating two accounts, or by reviewers optimizing for review
 - **Trust-gated upstream push.** A review earns local points immediately
   regardless of trust level, but a review only triggers the actual
   `CrowdinSource.submit` call once the reviewer has reached a minimum trust
-  threshold (e.g. 5 of their own prior submissions accepted). Below that
-  threshold, an approved submission accumulates local points and sits queued
+  threshold (a Wilson lower bound of at least 0.7 on the approval rate of
+  their last 20 decided submissions, so about nine clean approvals). Below
+  that threshold, an approved submission accumulates local points and sits queued
   for a trusted reviewer or the maintainer to countersign before it reaches
   Crowdin. This is the load-bearing fix: it decouples "can earn points" (low
   bar, keeps the game loop working for new contributors) from "can put a
   string in front of a screen-reader user" (high bar).
-  **Bootstrap problem this creates and its fix**: on day one, nobody has 5
-  accepted submissions — if every early approval waits on trust, the
+  **Bootstrap problem this creates and its fix**: on day one, nobody has the
+  approvals to reach it — if every early approval waits on trust, the
   maintainer becomes the exact bottleneck this project exists to relieve.
   v1 seeds the maintainer, and any Kurmanji speakers already known and
   trusted before launch, with `Role.Maintainer`/`Role.Reviewer` directly via
