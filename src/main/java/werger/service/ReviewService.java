@@ -43,6 +43,7 @@ public class ReviewService {
         return submissions.oldestPendingFor(reviewerId);
     }
 
+    /** Records the verdict. The caller must already have checked that {@code reviewer} is an active user. */
     public Result<ReviewError, Void> review(
             Submission submission, UUID reviewer, ReviewVerdict verdict, Optional<String> comment) {
         if (submission.submitter().equals(reviewer)) {
