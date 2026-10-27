@@ -37,7 +37,7 @@ public class CrowdinSource implements TranslationSource {
         List<CrowdinTranslation> translations = client.getTranslations(language.code(), fileId);
         Set<Long> approvedTranslationIds = client.approvedTranslationIds(language.code(), fileId);
         Set<Long> approved = translations.stream()
-                .filter(t -> approvedTranslationIds.contains(t.translationId()))
+                .filter(t -> approvedTranslationIds.containsAll(t.idsToApprove()))
                 .map(CrowdinTranslation::stringId)
                 .collect(Collectors.toSet());
         Map<Long, String> draftByStringId = latestDrafts(translations);
@@ -51,7 +51,9 @@ public class CrowdinSource implements TranslationSource {
     public List<TmSegment> fetchMemory(Language language) {
         Map<Long, String> sourceTextById = client.sourceStrings(fileId).stream()
                 .collect(Collectors.toMap(CrowdinSourceString::id, CrowdinSourceString::text));
+        // A plural string has one source text but several translations, so none pairs with it.
         return client.approvedTranslations(language.code(), fileId).stream()
+                .filter(t -> !t.isPlural())
                 .flatMap(t -> toSegment(t, sourceTextById, language).stream())
                 .toList();
     }
@@ -83,6 +85,7 @@ public class CrowdinSource implements TranslationSource {
     // A string can hold several submissions; the highest translationId is the most recent one.
     private static Map<Long, String> latestDrafts(List<CrowdinTranslation> translations) {
         return translations.stream()
+                .filter(t -> !t.isPlural())
                 .collect(Collectors.groupingBy(
                         CrowdinTranslation::stringId,
                         Collectors.collectingAndThen(

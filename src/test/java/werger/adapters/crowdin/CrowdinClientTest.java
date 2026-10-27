@@ -7,6 +7,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.util.List;
+import java.util.Set;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -90,8 +91,8 @@ class CrowdinClientTest {
         respond("/languages/kmr/translations", PLURAL_TRANSLATION);
         assertThat(crowdin(500).getTranslations("kmr", 661L))
                 .containsExactly(
-                        new CrowdinTranslation(71L, 700L, "%d pirtûk"),
-                        new CrowdinTranslation(72L, 700L, "%d pirtûk (pir)"));
+                        new CrowdinTranslation(71L, 700L, "%d pirtûk", Set.of(71L, 72L)),
+                        new CrowdinTranslation(72L, 700L, "%d pirtûk (pir)", Set.of(71L, 72L)));
     }
 
     @Test
@@ -100,7 +101,7 @@ class CrowdinClientTest {
         respond("/approvals", """
                 {"data":[{"data":{"translationId":72}}]}""");
         assertThat(crowdin(500).approvedTranslations("kmr", 661L))
-                .containsExactly(new CrowdinTranslation(72L, 700L, "%d pirtûk (pir)"));
+                .containsExactly(new CrowdinTranslation(72L, 700L, "%d pirtûk (pir)", Set.of(71L, 72L)));
     }
 
     @Test
@@ -110,5 +111,14 @@ class CrowdinClientTest {
                 .andRespond(withSuccess(PLURAL_TRANSLATION, MediaType.APPLICATION_JSON));
         assertThat(crowdin(2).getTranslations("kmr", 661L)).hasSize(2);
         server.verify();
+    }
+
+    @Test
+    void getTranslationsDropsARowThatCarriesNoTranslationId() {
+        respond("/languages/kmr/translations", """
+                {"data":[{"data":{"stringId":5,"text":"asset"}},\
+                {"data":{"translationId":42,"stringId":661,"text":"Temam"}}]}""");
+        assertThat(crowdin(500).getTranslations("kmr", 661L))
+                .containsExactly(new CrowdinTranslation(42L, 661L, "Temam"));
     }
 }

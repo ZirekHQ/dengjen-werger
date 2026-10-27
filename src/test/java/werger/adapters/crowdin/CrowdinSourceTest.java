@@ -94,6 +94,13 @@ class CrowdinSourceTest {
         return new CrowdinTranslation(stringId * 10, stringId, text);
     }
 
+    private static List<CrowdinTranslation> pluralForms(long stringId, long... translationIds) {
+        Set<Long> row = java.util.Arrays.stream(translationIds).boxed().collect(Collectors.toSet());
+        return java.util.Arrays.stream(translationIds)
+                .mapToObj(id -> new CrowdinTranslation(id, stringId, "form " + id, row))
+                .toList();
+    }
+
     private static WorkItem item(String externalId) {
         return new WorkItem(
                 UUID.randomUUID(),
@@ -178,6 +185,41 @@ class CrowdinSourceTest {
             assertThat(segment.language()).isEqualTo("kmr");
             assertThat(segment.sourceAdapter()).isEqualTo("crowdin");
         });
+    }
+
+    @Test
+    void fetchWorkItemsKeepsAPluralStringUntilEveryFormIsApproved() {
+        var forms = pluralForms(2, 20, 21);
+        var client = new StubClient(List.of(string(2, "Two")), List.of(forms.getFirst()), forms);
+
+        assertThat(source(client).fetchWorkItems(KMR))
+                .extracting(WorkItem::externalId)
+                .containsExactly("2");
+    }
+
+    @Test
+    void fetchWorkItemsDropsAPluralStringOnceEveryFormIsApproved() {
+        var forms = pluralForms(2, 20, 21);
+        var client = new StubClient(List.of(string(2, "Two")), forms, forms);
+
+        assertThat(source(client).fetchWorkItems(KMR)).isEmpty();
+    }
+
+    @Test
+    void fetchWorkItemsDoesNotDraftFromAPluralForm() {
+        var forms = pluralForms(2, 20, 21);
+        var client = new StubClient(List.of(string(2, "Two")), List.of(), forms);
+
+        assertThat(source(client).fetchWorkItems(KMR).getFirst().targetTextDraft())
+                .isEmpty();
+    }
+
+    @Test
+    void fetchMemorySkipsPluralFormsBecauseTheSourceTextIsNotPerForm() {
+        var forms = pluralForms(2, 20, 21);
+        var client = new StubClient(List.of(string(2, "Two")), forms);
+
+        assertThat(source(client).fetchMemory(KMR)).isEmpty();
     }
 
     @Test
