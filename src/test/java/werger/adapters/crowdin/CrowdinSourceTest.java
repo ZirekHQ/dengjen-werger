@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -95,8 +96,8 @@ class CrowdinSourceTest {
     }
 
     private static List<CrowdinTranslation> pluralForms(long stringId, long... translationIds) {
-        Set<Long> row = java.util.Arrays.stream(translationIds).boxed().collect(Collectors.toSet());
-        return java.util.Arrays.stream(translationIds)
+        Set<Long> row = Arrays.stream(translationIds).boxed().collect(Collectors.toSet());
+        return Arrays.stream(translationIds)
                 .mapToObj(id -> new CrowdinTranslation(id, stringId, "form " + id, row))
                 .toList();
     }
