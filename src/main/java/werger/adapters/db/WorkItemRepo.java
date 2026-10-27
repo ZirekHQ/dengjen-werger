@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import werger.domain.WorkItem;
+import werger.domain.WorkItemStatus;
 
 public class WorkItemRepo {
     private final JdbcTemplate jdbc;
@@ -28,7 +29,14 @@ public class WorkItemRepo {
                 item.language(),
                 item.sourceText(),
                 item.targetTextDraft().orElse(null));
-        return item;
+        return new WorkItem(
+                item.id(),
+                item.sourceAdapter(),
+                item.externalId(),
+                item.language(),
+                item.sourceText(),
+                item.targetTextDraft(),
+                new WorkItemStatus.Available());
     }
 
     /**
