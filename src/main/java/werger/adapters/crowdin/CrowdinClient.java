@@ -103,11 +103,14 @@ public class CrowdinClient {
 
     public List<CrowdinTranslation> getTranslations(String languageId, long fileId) {
         return paginate(
-                offset -> resource("languages/" + languageId + "/translations", offset)
-                        .queryParam(FILE_ID, fileId)
-                        .build()
-                        .toUri(),
-                new ParameterizedTypeReference<CrowdinEnvelope<CrowdinTranslation>>() {});
+                        offset -> resource("languages/" + languageId + "/translations", offset)
+                                .queryParam(FILE_ID, fileId)
+                                .build()
+                                .toUri(),
+                        new ParameterizedTypeReference<CrowdinEnvelope<CrowdinLanguageTranslation>>() {})
+                .stream()
+                .flatMap(row -> row.flatten().stream())
+                .toList();
     }
 
     public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
