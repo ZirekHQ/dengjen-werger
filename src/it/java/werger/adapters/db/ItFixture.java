@@ -99,6 +99,10 @@ public final class ItFixture implements AutoCloseable {
             String ownedItems = "select id from work_items where source_adapter = ?";
             jdbc.update("update work_items set pending_submission_id = null where source_adapter = ?", adapter);
             jdbc.update(
+                    "delete from points_ledger where submission_id in (select id from submissions where work_item_id in ("
+                            + ownedItems + "))",
+                    adapter);
+            jdbc.update(
                     "delete from reviews where submission_id in (select id from submissions where work_item_id in ("
                             + ownedItems + "))",
                     adapter);
