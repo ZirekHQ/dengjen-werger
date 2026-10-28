@@ -135,6 +135,8 @@ jacoco {
 }
 
 val coverageExclusions = listOf("werger/WergerApplication*", "werger/adapters/db/Db.class")
+// JDBC repos are exercised only by integration tests, so the unit-only gate leaves them out; the Sonar report keeps them.
+val unitGateExclusions = coverageExclusions + "werger/adapters/db/*Repo.class"
 
 // The coverage gate below stays on unit-test data only; this report also includes integration tests for Sonar.
 tasks.jacocoTestReport {
@@ -153,7 +155,7 @@ tasks.jacocoTestReport {
 tasks.jacocoTestCoverageVerification {
     dependsOn(tasks.test)
     classDirectories.setFrom(
-        files(classDirectories.files.map { fileTree(it) { exclude(coverageExclusions) } }),
+        files(classDirectories.files.map { fileTree(it) { exclude(unitGateExclusions) } }),
     )
     violationRules {
         rule {
