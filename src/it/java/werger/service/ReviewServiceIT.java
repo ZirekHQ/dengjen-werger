@@ -18,6 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import werger.adapters.db.ItFixture;
+import werger.adapters.db.PointsRepo;
 import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.SubmissionRepo;
 import werger.adapters.db.WorkItemRepo;
@@ -41,6 +42,7 @@ class ReviewServiceIT {
                 workItems,
                 new SubmissionRepo(db.jdbc()),
                 new ReviewRepo(db.jdbc()),
+                new PointsRepo(db.jdbc()),
                 db.transactions(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -138,7 +140,39 @@ class ReviewServiceIT {
 
             assertThat(winners).isEqualTo(1);
             assertThat(reviewCount(submission)).isEqualTo(1);
+            int expectedRows = db.statusOf(submission.workItem()).equals("approved") ? 2 : 1;
+            assertThat(ledgerRows(submission)).isEqualTo(expectedRows);
         }
+    }
+
+    private int ledgerRows(Submission submission) {
+        return db.jdbc()
+                .queryForObject(
+                        "select count(*) from points_ledger where submission_id = ?", Integer.class, submission.id());
+    }
+
+    @Test
+    void approvalWritesBothPayoutsAndRejectionOnlyTheReviewers() {
+        Submission approved = db.pendingSubmission(db.newUser(), NOW);
+        Submission rejected = db.pendingSubmission(db.newUser(), NOW);
+
+        service.review(approved, db.newUser(), ReviewVerdict.APPROVED, Optional.empty());
+        service.review(rejected, db.newUser(), ReviewVerdict.REJECTED, Optional.empty());
+
+        assertThat(ledgerRows(approved)).isEqualTo(2);
+        assertThat(ledgerRows(rejected)).isEqualTo(1);
+    }
+
+    @Test
+    void aReviewThatLosesTheRacePaysNobody() {
+        Submission current = db.pendingSubmission(db.newUser(), NOW);
+        Submission stale =
+                new Submission(UUID.randomUUID(), current.workItem(), current.submitter(), "old", NOW.minusSeconds(60));
+        new SubmissionRepo(db.jdbc()).insert(stale);
+
+        service.review(stale, db.newUser(), ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(ledgerRows(stale)).isZero();
     }
 
     private static ReviewVerdict verdictFor(int index) {

@@ -11,9 +11,12 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import werger.adapters.db.PointsRepo;
 import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.SubmissionRepo;
 import werger.adapters.db.WorkItemRepo;
+import werger.domain.PointsLedgerEntry;
+import werger.domain.PointsReason;
 import werger.domain.Review;
 import werger.domain.ReviewVerdict;
 import werger.domain.Submission;
@@ -66,12 +69,28 @@ class ReviewServiceTest {
         }
     }
 
+    private static final class StubPoints extends PointsRepo {
+        final List<PointsLedgerEntry> awarded = new ArrayList<>();
+
+        StubPoints() {
+            super(new JdbcTemplate());
+        }
+
+        @Override
+        public boolean award(PointsLedgerEntry entry) {
+            awarded.add(entry);
+            return true;
+        }
+    }
+
     private final StubWorkItems workItems = new StubWorkItems();
     private final StubReviews reviews = new StubReviews();
+    private final StubPoints points = new StubPoints();
     private final ReviewService service = new ReviewService(
             workItems,
             new SubmissionRepo(new JdbcTemplate()),
             reviews,
+            points,
             NoTransactions.template(),
             Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -119,5 +138,45 @@ class ReviewServiceTest {
                         Result.Err.class,
                         err -> assertThat(err.error()).isInstanceOf(ReviewError.AlreadyDecided.class));
         assertThat(reviews.inserted).isEmpty();
+    }
+
+    @Test
+    void approvalPaysTheReviewerAndTheSubmitter() {
+        service.review(SUBMISSION, REVIEWER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(points.awarded)
+                .containsExactlyInAnyOrder(
+                        new PointsLedgerEntry(
+                                REVIEWER,
+                                SUBMISSION.id(),
+                                PointsReason.REVIEW_COMPLETED,
+                                ReviewService.REVIEW_POINTS,
+                                NOW),
+                        new PointsLedgerEntry(
+                                SUBMITTER,
+                                SUBMISSION.id(),
+                                PointsReason.SUBMISSION_APPROVED,
+                                ReviewService.APPROVAL_POINTS,
+                                NOW));
+    }
+
+    @Test
+    void rejectionPaysOnlyTheReviewer() {
+        service.review(SUBMISSION, REVIEWER, ReviewVerdict.REJECTED, Optional.of("wrong register"));
+
+        assertThat(points.awarded).singleElement().satisfies(entry -> {
+            assertThat(entry.user()).isEqualTo(REVIEWER);
+            assertThat(entry.reason()).isEqualTo(PointsReason.REVIEW_COMPLETED);
+        });
+    }
+
+    @Test
+    void aLostRaceAndASelfReviewPayNothing() {
+        workItems.transitionWins = false;
+
+        service.review(SUBMISSION, REVIEWER, ReviewVerdict.APPROVED, Optional.empty());
+        service.review(SUBMISSION, SUBMITTER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(points.awarded).isEmpty();
     }
 }
