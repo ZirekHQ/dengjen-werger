@@ -47,13 +47,16 @@ class WorkItemRepoIT {
     @AfterEach
     void cleanUp() {
         if (jdbc != null) {
-            jdbc.update("update work_items set pending_submission_id = null where source_adapter = ?", ADAPTER);
-            jdbc.update(
-                    "delete from submissions where work_item_id in (select id from work_items where source_adapter = ?)",
-                    ADAPTER);
-            jdbc.update("delete from work_items where source_adapter = ?", ADAPTER);
-            jdbc.update("delete from users where auth_provider_ref like ?", ADAPTER + "%");
-            pool.close();
+            try {
+                jdbc.update("update work_items set pending_submission_id = null where source_adapter = ?", ADAPTER);
+                jdbc.update(
+                        "delete from submissions where work_item_id in (select id from work_items where source_adapter = ?)",
+                        ADAPTER);
+                jdbc.update("delete from work_items where source_adapter = ?", ADAPTER);
+                jdbc.update("delete from users where auth_provider_ref like ?", ADAPTER + "%");
+            } finally {
+                pool.close();
+            }
         }
     }
 
