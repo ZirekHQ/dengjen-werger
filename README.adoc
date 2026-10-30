@@ -87,5 +87,12 @@ Spotless format check; `./gradlew spotlessApply` fixes formatting.
 * *Contributing:* see link:.github/CONTRIBUTING.adoc[`.github/CONTRIBUTING.adoc`]
 * *License:* link:LICENSE[GPL-3.0-or-later]
 
+== Support This Project
+
+If this project is useful to you, please consider supporting it:
+
+* ⭐ https://github.com/ZirekHQ/dengjen-werger[Star on GitHub]
+* 💖 https://opencollective.com/zirek[Support on Open Collective]
+
 Part of the https://github.com/ZirekHQ/.github/blob/main/THEMES.md#sustainable-contribution[Sustainable Contribution]
 theme.
