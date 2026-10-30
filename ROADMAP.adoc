@@ -9,19 +9,21 @@ record and isn't edited after the fact — status belongs here instead.
 == Current milestone: Milestone 1 — Prove the Crowdin Integration First
 
 Sequenced first deliberately: the riskiest unknowns (Crowdin's real
-write-API behavior, Skunk's behavior on Supabase's pooler) get proven
-against real services before gamification logic is built on assumptions
-about them.
+write-API behavior, the database pool's behavior on Supabase's pooler) get
+proven against real services before gamification logic is built on
+assumptions about them. The project moved from Scala/sbt to Java/Spring
+Boot partway through this milestone (#53); the rows below describe the
+current build.
 
 |===
 |Task |Ships |Status 
 
 |0. Repository hygiene |License, README, CONTRIBUTING, CI |Done 
-|1. Project scaffold |sbt project, `/healthz` route |Done 
+|1. Project scaffold |Gradle / Spring Boot project, `/healthz` route |Done 
 |2. Database schema |Initial migration |Done 
-|3. Skunk pool on Supavisor |Pooling-trap verified against real Supavisor |Done 
+|3. HikariCP pool on Supavisor |Pooling-trap verified against real Supavisor (`prepareThreshold=0`) |Done 
 |4. Domain model |`Language`, `User`, `Commitment`, `WorkItem`, etc. |Done 
-|5. `TranslationSource` port + Crowdin codecs |Port trait, JSON codecs |Done 
+|5. `TranslationSource` port + Crowdin codecs |Port interface, JSON codecs |Done 
 |6. Crowdin client — read path |Source strings, approved translations |Done 
 |7. Crowdin client — write path |`submit`/`approve`, guarded live integration test |Done 
 |8. `CrowdinSource` |`TranslationSource` implementation |Done 
@@ -38,19 +40,19 @@ link:docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md[`docs/superpowe
 and
 link:docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md[`docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md`].
 
-== Next: Milestone 2 — Domain &amp; Gamification Engine
+== Started alongside Milestone 1: Milestone 2 — Domain &amp; Gamification Engine
 
 |===
-|Task |Ships 
+|Task |Ships |Status 
 
-|9. `CommitmentEvaluator` |Pure quota-vs-progress logic 
-|10. `StreakCalculator` and `TrustLevel` |Pure 
-|11. `WorkItemRepo` |Lease/release, concurrency-tested 
-|12. `SubmissionService` / `ReviewService` |Blind dispatch, anti-self-review, `RevisionPending` 
-|13. `PointsRepo` |Payout uniqueness, wired into both flows 
-|14. `ApprovalService` |Trust gate, Crowdin push, `UpstreamApprovalPending` 
-|15. `JobsService` |TM sync, commitment evaluation, reminders, `RevisionPending` sweep 
-|16. `AccountDeletionService` |PII purge, contribution retention 
+|9. `CommitmentEvaluator` |Pure quota-vs-progress logic |Done (#76) 
+|10. `StreakCalculator` and `TrustLevel` |Pure |In progress (#77; #14 open) 
+|11. `WorkItemRepo` |Lease/release, concurrency-tested |Done (#82) 
+|12. `SubmissionService` / `ReviewService` |Blind dispatch, anti-self-review, `RevisionPending` |Done (#83) 
+|13. `PointsRepo` |Payout uniqueness, wired into both flows |Done (#92) 
+|14. `ApprovalService` |Trust gate, Crowdin push, `UpstreamApprovalPending` |Not started 
+|15. `JobsService` |TM sync, commitment evaluation, reminders, `RevisionPending` sweep |Not started 
+|16. `AccountDeletionService` |PII purge, contribution retention |Not started 
 |===
 
 == Then: Milestone 3 — Contributor-Facing Surface
@@ -76,22 +78,13 @@ link:docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md[`docs/superpowers
 
 == Funding
 
-Tasks 7–15 above (Crowdin write path through `JobsService` reminders) are
-budgeted as *M0 — Translator Recruitment Infrastructure* in the Zirek
-NLnet General Open Call proposal (draft: `nlnet-proposal.md` in the
-`zirekhq` workspace root), €5,400 / 90 hours, months 1–2 of a 6-month grant
-if awarded. Rationale: nvdaku's translation has been open since 2018 and is
+Zirek's NLnet Open Call proposal (2026-11-11d) budgets the remaining
+recruitment work as *M0 — Translator Recruitment Infrastructure*, months
+1–2 of a 6-month grant if awarded. Rationale: nvdaku's translation has been open since 2018 and is
 still partial because one-off volunteer offers don't sustain, not for lack
-of a translation tool — this is the actual mechanism to fix that, not scope
-adjacent to the grant's real goal.
+of a translation tool. This is the mechanism to fix that, not scope
+adjacent to the grant's goal.
 
-Explicitly out of the funded scope (deferred past M0, not committed to any
-timeline): `PointsRepo`, `StreakCalculator`/`TrustLevel`, `ApprovalService`'s
-trust gate, `AccountDeletionService`, and all of Milestone 3
-(contributor-facing API/SPA) — an admin-triggered CLI/API is sufficient to
-run the first recruitment cohort. Everything beyond nvdaku/Crowdin/NVDA
-(Beyond v1 section above) remains unfunded and unscheduled.
-
-If the NLnet application is not funded, this section reverts to being an
-open call on the maintainer's time — revisit before the Nov 3, 2026
-deadline result.
+Everything beyond nvdaku/Crowdin/NVDA (Beyond v1 section above) remains
+unfunded and unscheduled. Recurring costs are covered by donations through
+https://opencollective.com/zirek[Open Collective].
