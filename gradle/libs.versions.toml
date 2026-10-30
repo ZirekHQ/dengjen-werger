@@ -1,5 +1,5 @@
 [versions]
-spring-boot = "4.1.1"
+spring-boot = "4.1.2"
 spotless = "8.10.4"
 jacoco = "0.8.15"
 # Overrides Spring Boot 4.1.1's 11.0.24 (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6,
