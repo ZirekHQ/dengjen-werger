@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,10 +23,16 @@ import werger.adapters.db.PointsRepo;
 import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.SubmissionRepo;
 import werger.adapters.db.WorkItemRepo;
+import werger.domain.Language;
 import werger.domain.ReviewVerdict;
+import werger.domain.Role;
 import werger.domain.Submission;
+import werger.domain.TmSegment;
+import werger.domain.WorkItem;
 import werger.domain.WorkItemStatus;
 import werger.ports.Result;
+import werger.ports.SourceError;
+import werger.ports.TranslationSource;
 
 class ReviewServiceIT {
     private static final Instant NOW = Instant.parse("2026-09-01T12:00:00Z");
@@ -33,6 +40,8 @@ class ReviewServiceIT {
     private ItFixture db;
     private WorkItemRepo workItems;
     private ReviewService service;
+    private final List<String> pushed = new ArrayList<>();
+    private Result<SourceError, Void> pushResult = Result.ok(null);
 
     @BeforeEach
     void connect() {
@@ -43,6 +52,7 @@ class ReviewServiceIT {
                 new SubmissionRepo(db.jdbc()),
                 new ReviewRepo(db.jdbc()),
                 new PointsRepo(db.jdbc()),
+                new ApprovalService(new RecordingSource(), workItems, new ReviewRepo(db.jdbc())),
                 db.transactions(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -51,6 +61,24 @@ class ReviewServiceIT {
     void cleanUp() {
         if (db != null) {
             db.close();
+        }
+    }
+
+    private final class RecordingSource implements TranslationSource {
+        @Override
+        public List<WorkItem> fetchWorkItems(Language language) {
+            return List.of();
+        }
+
+        @Override
+        public List<TmSegment> fetchMemory(Language language) {
+            return List.of();
+        }
+
+        @Override
+        public Result<SourceError, Void> submit(WorkItem item, String translation) {
+            pushed.add(item.id().toString());
+            return pushResult;
         }
     }
 
@@ -63,7 +91,8 @@ class ReviewServiceIT {
     void approvalMarksTheItemApproved() {
         Submission submission = db.pendingSubmission(db.newUser(), NOW);
 
-        var result = service.review(submission, db.newUser(), ReviewVerdict.APPROVED, Optional.empty());
+        var result =
+                service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result).isInstanceOf(Result.Ok.class);
         assertThat(db.statusOf(submission.workItem())).isEqualTo("approved");
@@ -75,7 +104,8 @@ class ReviewServiceIT {
         UUID submitter = db.newUser();
         Submission submission = db.pendingSubmission(submitter, NOW);
 
-        service.review(submission, db.newUser(), ReviewVerdict.REJECTED, Optional.of("wrong register"));
+        service.review(
+                submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.REJECTED, Optional.of("wrong register"));
 
         assertThat(workItems.find(submission.workItem()).orElseThrow().status())
                 .isEqualTo(
@@ -86,7 +116,7 @@ class ReviewServiceIT {
     void rejectionWithoutACommentStillReachesRevisionPending() {
         Submission submission = db.pendingSubmission(db.newUser(), NOW);
 
-        service.review(submission, db.newUser(), ReviewVerdict.REJECTED, Optional.empty());
+        service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.REJECTED, Optional.empty());
 
         assertThat(db.statusOf(submission.workItem())).isEqualTo("revision_pending");
     }
@@ -98,7 +128,7 @@ class ReviewServiceIT {
                 new Submission(UUID.randomUUID(), current.workItem(), current.submitter(), "old", NOW.minusSeconds(60));
         new SubmissionRepo(db.jdbc()).insert(stale);
 
-        var result = service.review(stale, db.newUser(), ReviewVerdict.APPROVED, Optional.empty());
+        var result = service.review(stale, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result)
                 .isInstanceOfSatisfying(
@@ -129,7 +159,8 @@ class ReviewServiceIT {
             List<Callable<Boolean>> attempts = IntStream.range(0, reviewers.size())
                     .<Callable<Boolean>>mapToObj(i -> () -> {
                         start.await();
-                        return service.review(submission, reviewers.get(i), verdictFor(i), Optional.empty())
+                        return service.review(
+                                        submission, reviewers.get(i), Role.CONTRIBUTOR, verdictFor(i), Optional.empty())
                                 instanceof Result.Ok<?, ?>;
                     })
                     .toList();
@@ -156,8 +187,8 @@ class ReviewServiceIT {
         Submission approved = db.pendingSubmission(db.newUser(), NOW);
         Submission rejected = db.pendingSubmission(db.newUser(), NOW);
 
-        service.review(approved, db.newUser(), ReviewVerdict.APPROVED, Optional.empty());
-        service.review(rejected, db.newUser(), ReviewVerdict.REJECTED, Optional.empty());
+        service.review(approved, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+        service.review(rejected, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.REJECTED, Optional.empty());
 
         assertThat(ledgerRows(approved)).isEqualTo(2);
         assertThat(ledgerRows(rejected)).isEqualTo(1);
@@ -170,7 +201,7 @@ class ReviewServiceIT {
                 new Submission(UUID.randomUUID(), current.workItem(), current.submitter(), "old", NOW.minusSeconds(60));
         new SubmissionRepo(db.jdbc()).insert(stale);
 
-        service.review(stale, db.newUser(), ReviewVerdict.APPROVED, Optional.empty());
+        service.review(stale, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(ledgerRows(stale)).isZero();
     }
@@ -185,5 +216,47 @@ class ReviewServiceIT {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    @Test
+    void aMaintainerApprovalPushesUpstreamAndMarksTheItemSynced() {
+        Submission submission = db.pendingSubmission(db.newUser(), NOW);
+
+        service.review(submission, db.newUser(), Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(pushed).containsExactly(submission.workItem().toString());
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("synced");
+    }
+
+    @Test
+    void aReviewerWithoutAnEarnedRecordLeavesTheApprovalQueuedAndUnpushed() {
+        Submission submission = db.pendingSubmission(db.newUser(), NOW);
+
+        service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(pushed).isEmpty();
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("approved");
+    }
+
+    @Test
+    void aFailedPushLeavesTheItemUpstreamApprovalPending() {
+        pushResult = Result.err(new SourceError.Transient("503"));
+        Submission submission = db.pendingSubmission(db.newUser(), NOW);
+
+        service.review(submission, db.newUser(), Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("upstream_approval_pending");
+    }
+
+    @Test
+    void aLostRaceNeverPushesUpstream() {
+        Submission current = db.pendingSubmission(db.newUser(), NOW);
+        Submission stale =
+                new Submission(UUID.randomUUID(), current.workItem(), current.submitter(), "old", NOW.minusSeconds(60));
+        new SubmissionRepo(db.jdbc()).insert(stale);
+
+        service.review(stale, db.newUser(), Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(pushed).isEmpty();
     }
 }

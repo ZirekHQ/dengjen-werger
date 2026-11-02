@@ -341,4 +341,32 @@ class WorkItemRepoIT {
             throw new IllegalStateException(e);
         }
     }
+
+    private UUID itemWithStatus(String status) {
+        UUID id = newItem().id();
+        jdbc.update("update work_items set status = ?::work_item_status where id = ?", status, id);
+        return id;
+    }
+
+    @Test
+    void markSyncedOnlyMovesAnApprovedItem() {
+        UUID approved = itemWithStatus("approved");
+        UUID available = newItem().id();
+
+        assertThat(repo.markSynced(approved)).isTrue();
+        assertThat(repo.markSynced(available)).isFalse();
+        assertThat(statusOf(approved)).isEqualTo("synced");
+        assertThat(statusOf(available)).isEqualTo("available");
+    }
+
+    @Test
+    void markUpstreamApprovalPendingOnlyMovesAnApprovedItem() {
+        UUID approved = itemWithStatus("approved");
+        UUID synced = itemWithStatus("synced");
+
+        assertThat(repo.markUpstreamApprovalPending(approved)).isTrue();
+        assertThat(repo.markUpstreamApprovalPending(synced)).isFalse();
+        assertThat(statusOf(approved)).isEqualTo("upstream_approval_pending");
+        assertThat(statusOf(synced)).isEqualTo("synced");
+    }
 }

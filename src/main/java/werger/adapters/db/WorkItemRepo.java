@@ -116,6 +116,16 @@ public class WorkItemRepo {
                 """, userId, utc(leaseExpiresAt), id, userId, utc(now));
     }
 
+    /** Only an approved item can be synced, so a late retry cannot overwrite a newer state. */
+    public boolean markSynced(UUID id) {
+        return transition("update work_items set status = 'synced' where id = ? and status = 'approved'", id);
+    }
+
+    public boolean markUpstreamApprovalPending(UUID id) {
+        return transition(
+                "update work_items set status = 'upstream_approval_pending' where id = ? and status = 'approved'", id);
+    }
+
     private boolean transition(String sql, Object... args) {
         return jdbc.update(sql, args) == 1;
     }
