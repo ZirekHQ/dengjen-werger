@@ -99,7 +99,7 @@ class ReviewServiceTest {
         @Override
         public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
             calls.add(reviewer + ":" + reviewerRole);
-            return ApprovalOutcome.AWAITING_COUNTERSIGN;
+            return new ApprovalOutcome.AwaitingCountersign();
         }
     }
 
@@ -223,7 +223,7 @@ class ReviewServiceTest {
     void anApprovalHandsTheReviewersIdentityAndRoleToTheApprovalGate() {
         var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
 
-        assertThat(result).isEqualTo(Result.ok(Optional.of(ApprovalOutcome.AWAITING_COUNTERSIGN)));
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.AwaitingCountersign())));
         assertThat(approvals.calls).containsExactly(REVIEWER + ":MAINTAINER");
     }
 

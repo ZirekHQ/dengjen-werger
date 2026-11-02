@@ -6,6 +6,7 @@ import werger.adapters.db.WorkItemRepo;
 import werger.domain.Role;
 import werger.domain.Submission;
 import werger.domain.WorkItem;
+import werger.ports.SourceError;
 import werger.ports.TranslationSource;
 
 /** Pushes an approved translation upstream when the reviewer is trusted to, and queues it otherwise. */
@@ -23,7 +24,7 @@ public class ApprovalService {
     /** Must run after the approving review has committed, so a slow upstream never holds its transaction open. */
     public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
         if (!TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(reviewer, TrustLevel.WINDOW))) {
-            return ApprovalOutcome.AWAITING_COUNTERSIGN;
+            return new ApprovalOutcome.AwaitingCountersign();
         }
         return push(submission);
     }
@@ -33,16 +34,22 @@ public class ApprovalService {
                 .find(submission.workItem())
                 .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
         return source.submit(item, submission.proposedTranslation())
-                .fold(error -> markPending(item), ok -> markSynced(item));
+                .<ApprovalOutcome>fold(error -> onPushFailed(item, error), ok -> markSynced(item));
     }
 
     private ApprovalOutcome markSynced(WorkItem item) {
-        workItems.markSynced(item.id());
-        return ApprovalOutcome.SYNCED;
+        return recorded(workItems.markSynced(item.id()), new ApprovalOutcome.Synced());
     }
 
-    private ApprovalOutcome markPending(WorkItem item) {
-        workItems.markUpstreamApprovalPending(item.id());
-        return ApprovalOutcome.UPSTREAM_PENDING;
+    private ApprovalOutcome onPushFailed(WorkItem item, SourceError error) {
+        return switch (error) {
+            case SourceError.Transient _ ->
+                recorded(workItems.markUpstreamApprovalPending(item.id()), new ApprovalOutcome.UpstreamPending());
+            case SourceError.Rejected rejected -> new ApprovalOutcome.UpstreamRejected(rejected.message());
+        };
+    }
+
+    private static ApprovalOutcome recorded(boolean moved, ApprovalOutcome outcome) {
+        return moved ? outcome : new ApprovalOutcome.Superseded();
     }
 }

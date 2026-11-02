@@ -55,6 +55,7 @@ class ApprovalServiceTest {
 
     private static final class StubWorkItems extends WorkItemRepo {
         final List<String> calls = new ArrayList<>();
+        boolean transitionMatches = true;
 
         StubWorkItems() {
             super(new JdbcTemplate());
@@ -68,13 +69,13 @@ class ApprovalServiceTest {
         @Override
         public boolean markSynced(UUID id) {
             calls.add("synced");
-            return true;
+            return transitionMatches;
         }
 
         @Override
         public boolean markUpstreamApprovalPending(UUID id) {
             calls.add("upstream_pending");
-            return true;
+            return transitionMatches;
         }
     }
 
@@ -113,7 +114,7 @@ class ApprovalServiceTest {
 
         var outcome = service.onApproved(SUBMISSION, REVIEWER, Role.CONTRIBUTOR);
 
-        assertThat(outcome).isEqualTo(ApprovalOutcome.AWAITING_COUNTERSIGN);
+        assertThat(outcome).isEqualTo(new ApprovalOutcome.AwaitingCountersign());
         assertThat(source.pushed).isEmpty();
         assertThat(workItems.calls).isEmpty();
     }
@@ -122,7 +123,7 @@ class ApprovalServiceTest {
     void aMaintainerApprovalIsPushedAndMarksTheItemSynced() {
         var outcome = service.onApproved(SUBMISSION, REVIEWER, Role.MAINTAINER);
 
-        assertThat(outcome).isEqualTo(ApprovalOutcome.SYNCED);
+        assertThat(outcome).isEqualTo(new ApprovalOutcome.Synced());
         assertThat(source.pushed).containsExactly("ext-1=Betal");
         assertThat(workItems.calls).containsExactly("synced");
     }
@@ -131,7 +132,7 @@ class ApprovalServiceTest {
     void aContributorWithAnEarnedRecordIsTrustedToPush() {
         reviews.outcomes = approvals(TrustLevel.WINDOW);
 
-        assertThat(service.onApproved(SUBMISSION, REVIEWER, Role.CONTRIBUTOR)).isEqualTo(ApprovalOutcome.SYNCED);
+        assertThat(service.onApproved(SUBMISSION, REVIEWER, Role.CONTRIBUTOR)).isEqualTo(new ApprovalOutcome.Synced());
     }
 
     @Test
@@ -140,7 +141,34 @@ class ApprovalServiceTest {
 
         var outcome = service.onApproved(SUBMISSION, REVIEWER, Role.MAINTAINER);
 
-        assertThat(outcome).isEqualTo(ApprovalOutcome.UPSTREAM_PENDING);
+        assertThat(outcome).isEqualTo(new ApprovalOutcome.UpstreamPending());
         assertThat(workItems.calls).containsExactly("upstream_pending");
+    }
+
+    @Test
+    void aPermanentRejectionIsSurfacedWithItsMessageAndNeverQueuedForRetry() {
+        source.outcome = Result.err(new SourceError.Rejected("Crowdin string id is not numeric: abc"));
+
+        var outcome = service.onApproved(SUBMISSION, REVIEWER, Role.MAINTAINER);
+
+        assertThat(outcome).isEqualTo(new ApprovalOutcome.UpstreamRejected("Crowdin string id is not numeric: abc"));
+        assertThat(workItems.calls).isEmpty();
+    }
+
+    @Test
+    void aSyncThatMatchesNoRowReportsSupersededInsteadOfSynced() {
+        workItems.transitionMatches = false;
+
+        assertThat(service.onApproved(SUBMISSION, REVIEWER, Role.MAINTAINER))
+                .isEqualTo(new ApprovalOutcome.Superseded());
+    }
+
+    @Test
+    void aQueueUpdateThatMatchesNoRowReportsSupersededInsteadOfUpstreamPending() {
+        workItems.transitionMatches = false;
+        source.outcome = Result.err(new SourceError.Transient("503"));
+
+        assertThat(service.onApproved(SUBMISSION, REVIEWER, Role.MAINTAINER))
+                .isEqualTo(new ApprovalOutcome.Superseded());
     }
 }
