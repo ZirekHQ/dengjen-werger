@@ -41,16 +41,16 @@ link:docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md[`docs/superpowers
 == Next: Milestone 2 — Domain &amp; Gamification Engine
 
 |===
-|Task |Ships 
+|Task |Ships |Status 
 
-|9. `CommitmentEvaluator` |Pure quota-vs-progress logic 
-|10. `StreakCalculator` and `TrustLevel` |Pure 
-|11. `WorkItemRepo` |Lease/release, concurrency-tested 
-|12. `SubmissionService` / `ReviewService` |Blind dispatch, anti-self-review, `RevisionPending` 
-|13. `PointsRepo` |Payout uniqueness, wired into both flows 
-|14. `ApprovalService` |Trust gate, Crowdin push, `UpstreamApprovalPending` 
-|15. `JobsService` |TM sync, commitment evaluation, reminders, `RevisionPending` sweep 
-|16. `AccountDeletionService` |PII purge, contribution retention 
+|9. `CommitmentEvaluator` |Pure quota-vs-progress logic  |Done 
+|10. `StreakCalculator` and `TrustLevel` |Pure  |Done 
+|11. `WorkItemRepo` |Lease/release, concurrency-tested  |Done 
+|12. `SubmissionService` / `ReviewService` |Blind dispatch, anti-self-review, `RevisionPending`  |Done 
+|13. `PointsRepo` |Payout uniqueness, wired into both flows  |Done 
+|14. `ApprovalService` |Trust gate, Crowdin push, `UpstreamApprovalPending`  |Done 
+|15. `JobsService` |TM sync, commitment evaluation, reminders, `RevisionPending` sweep  |
+|16. `AccountDeletionService` |PII purge, contribution retention  |
 |===
 
 == Then: Milestone 3 — Contributor-Facing Surface
