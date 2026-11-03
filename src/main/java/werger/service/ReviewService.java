@@ -16,6 +16,7 @@ import werger.domain.PointsReason;
 import werger.domain.Review;
 import werger.domain.ReviewCandidate;
 import werger.domain.ReviewVerdict;
+import werger.domain.Role;
 import werger.domain.Submission;
 import werger.ports.Result;
 
@@ -29,6 +30,7 @@ public class ReviewService {
     private final SubmissionRepo submissions;
     private final ReviewRepo reviews;
     private final PointsRepo points;
+    private final ApprovalService approvals;
     private final TransactionTemplate transactions;
     private final Clock clock;
 
@@ -37,12 +39,14 @@ public class ReviewService {
             SubmissionRepo submissions,
             ReviewRepo reviews,
             PointsRepo points,
+            ApprovalService approvals,
             TransactionTemplate transactions,
             Clock clock) {
         this.workItems = workItems;
         this.submissions = submissions;
         this.reviews = reviews;
         this.points = points;
+        this.approvals = approvals;
         this.transactions = transactions;
         this.clock = clock;
     }
@@ -51,14 +55,24 @@ public class ReviewService {
         return submissions.oldestPendingFor(reviewerId);
     }
 
-    /** Records the verdict. The caller must already have checked that {@code reviewer} is an active user. */
-    public Result<ReviewError, Void> review(
-            Submission submission, UUID reviewer, ReviewVerdict verdict, Optional<String> comment) {
+    /**
+     * Records the verdict and, for an approval, hands it to the approval gate once the review has committed. The caller
+     * must already have checked that {@code reviewer} is an active user and supplies their role.
+     */
+    public Result<ReviewError, Optional<ApprovalOutcome>> review(
+            Submission submission, UUID reviewer, Role reviewerRole, ReviewVerdict verdict, Optional<String> comment) {
         if (submission.submitter().equals(reviewer)) {
             return Result.err(new ReviewError.OwnSubmission());
         }
         Review review = new Review(submission.id(), reviewer, verdict, comment, clock.instant());
-        return Objects.requireNonNull(transactions.execute(status -> decide(status, submission, review)));
+        return Objects.requireNonNull(transactions.execute(status -> decide(status, submission, review)))
+                .fold(Result::err, ok -> Result.ok(approve(submission, review, reviewerRole)));
+    }
+
+    private Optional<ApprovalOutcome> approve(Submission submission, Review review, Role reviewerRole) {
+        return review.verdict() == ReviewVerdict.APPROVED
+                ? Optional.of(approvals.onApproved(submission, review.reviewer(), reviewerRole))
+                : Optional.empty();
     }
 
     // The status-gated transition runs first so that of two racing reviewers only one reaches the review insert.
