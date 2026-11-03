@@ -125,7 +125,7 @@ public class WorkItemRepo {
                 update work_items
                 set status = 'available',
                     revision_submitter = null, revision_comment = null, revision_expires_at = null
-                where status = 'revision_pending' and revision_expires_at < ?
+                where status = 'revision_pending' and revision_expires_at <= ?
                 """, utc(now));
     }
 

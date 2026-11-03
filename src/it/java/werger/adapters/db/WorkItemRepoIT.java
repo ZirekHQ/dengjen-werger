@@ -347,6 +347,19 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void anItemWhoseDeadlineIsExactlyNowIsReopenedRatherThanStranded() {
+        UUID submitter = newUser();
+        WorkItem item = revisionPendingUntil(submitter, SWEEP_NOW);
+
+        // reclaimForRevision needs deadline > now, so at the deadline only the sweep can move the item.
+        assertThat(repo.reclaimForRevision(item.id(), submitter, SWEEP_NOW, SWEEP_NOW.plusSeconds(1800)))
+                .isFalse();
+        repo.reopenExpiredRevisions(SWEEP_NOW);
+
+        assertThat(statusOf(item.id())).isEqualTo("available");
+    }
+
+    @Test
     void aReopenedItemKeepsNoRevisionStateAndCanBeLeasedByAnyone() {
         WorkItem lapsed = revisionPendingUntil(newUser(), SWEEP_NOW.minusSeconds(60));
 
