@@ -447,6 +447,16 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void markSyncedAlsoCompletesAnItemQueuedForUpstreamApproval() {
+        UUID queued = itemWithStatus("upstream_approval_pending");
+        UUID synced = itemWithStatus("synced");
+
+        assertThat(repo.markSynced(queued)).isTrue();
+        assertThat(repo.markSynced(synced)).isFalse();
+        assertThat(statusOf(queued)).isEqualTo("synced");
+    }
+
+    @Test
     void markUpstreamApprovalPendingOnlyMovesAnApprovedItem() {
         UUID approved = itemWithStatus("approved");
         UUID synced = itemWithStatus("synced");
