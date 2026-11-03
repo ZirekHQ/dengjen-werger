@@ -71,9 +71,12 @@ public class CrowdinSource implements TranslationSource {
         }
     }
 
+    // Both calls share one handler: a failed approval must not read as a sync, or the item is marked synced while
+    // Crowdin holds only a suggestion.
     private Result<SourceError, Void> create(WorkItem item, long stringId, String translation) {
         try {
-            client.createTranslation(item.language(), stringId, translation);
+            CrowdinCreatedTranslation created = client.createTranslation(item.language(), stringId, translation);
+            client.approveTranslation(created.id());
             return Result.ok(null);
         } catch (RestClientResponseException e) {
             return Result.err(toError(e));
