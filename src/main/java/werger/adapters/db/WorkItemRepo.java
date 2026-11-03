@@ -116,6 +116,19 @@ public class WorkItemRepo {
                 """, userId, utc(leaseExpiresAt), id, userId, utc(now));
     }
 
+    /**
+     * Reopens rejected items whose revision deadline has passed and reports how many. The status gate leaves an item the
+     * submitter has just reclaimed alone.
+     */
+    public int reopenExpiredRevisions(Instant now) {
+        return jdbc.update("""
+                update work_items
+                set status = 'available',
+                    revision_submitter = null, revision_comment = null, revision_expires_at = null
+                where status = 'revision_pending' and revision_expires_at < ?
+                """, utc(now));
+    }
+
     /** Only an approved item can be synced, so a late retry cannot overwrite a newer state. */
     public boolean markSynced(UUID id) {
         return transition("update work_items set status = 'synced' where id = ? and status = 'approved'", id);
