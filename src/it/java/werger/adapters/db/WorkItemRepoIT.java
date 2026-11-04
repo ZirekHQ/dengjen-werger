@@ -411,6 +411,99 @@ class WorkItemRepoIT {
         }
     }
 
+    private String leasedByOf(UUID id) {
+        return jdbc.queryForObject(
+                "select coalesce(leased_by::text, 'none') from work_items where id = ?", String.class, id);
+    }
+
+    @Test
+    void releaseUnfinishedWorkOfFreesAnItemTheUserHasLeased() {
+        UUID user = newUser();
+        WorkItem leased = newItem();
+        repo.tryLease(leased.id(), user, Instant.now().plusSeconds(1800));
+
+        int released = repo.releaseUnfinishedWorkOf(user);
+
+        assertThat(released).isEqualTo(1);
+        assertThat(statusOf(leased.id())).isEqualTo("available");
+        assertThat(leasedByOf(leased.id())).isEqualTo("none");
+    }
+
+    @Test
+    void releaseUnfinishedWorkOfFreesAnItemWaitingOnTheUsersSubmission() {
+        UUID user = newUser();
+        WorkItem item = newItem();
+        awaitReview(item.id(), newSubmission(item.id(), user));
+
+        repo.releaseUnfinishedWorkOf(user);
+
+        assertThat(repo.find(item.id()).orElseThrow().status()).isEqualTo(new WorkItemStatus.Available());
+        assertThat(jdbc.queryForObject(
+                        "select pending_submission_id is null from work_items where id = ?", Boolean.class, item.id()))
+                .isTrue();
+    }
+
+    @Test
+    void releaseUnfinishedWorkOfFreesAnItemWaitingOnTheUsersRevision() {
+        UUID user = newUser();
+        WorkItem item = revisionPendingUntil(user, Instant.now().plusSeconds(3600));
+
+        repo.releaseUnfinishedWorkOf(user);
+
+        assertThat(statusOf(item.id())).isEqualTo("available");
+        assertThat(jdbc.queryForObject(
+                        "select revision_submitter is null and revision_expires_at is null"
+                                + " from work_items where id = ?",
+                        Boolean.class,
+                        item.id()))
+                .isTrue();
+    }
+
+    @Test
+    void releaseUnfinishedWorkOfKeepsApprovedContributionsAndOtherUsersWork() {
+        UUID user = newUser();
+        UUID other = newUser();
+        WorkItem approved = newItem();
+        UUID approvedSubmission = newSubmission(approved.id(), user);
+        awaitReview(approved.id(), approvedSubmission);
+        repo.markApproved(approved.id(), approvedSubmission);
+        WorkItem othersPending = newItem();
+        awaitReview(othersPending.id(), newSubmission(othersPending.id(), other));
+        WorkItem othersLeased = newItem();
+        repo.tryLease(othersLeased.id(), other, Instant.now().plusSeconds(1800));
+
+        repo.releaseUnfinishedWorkOf(user);
+
+        assertThat(statusOf(approved.id())).isEqualTo("approved");
+        assertThat(statusOf(othersPending.id())).isEqualTo("pending_review");
+        assertThat(statusOf(othersLeased.id())).isEqualTo("in_progress");
+    }
+
+    @Test
+    void aReleaseRacingTheReviewVerdictLeavesTheItemInExactlyOneState() throws Exception {
+        UUID author = newUser();
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), author);
+        awaitReview(item.id(), submission);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<Boolean> approve = executor.submit(() -> {
+                start.await();
+                return repo.markApproved(item.id(), submission);
+            });
+            Future<Integer> release = executor.submit(() -> {
+                start.await();
+                return repo.releaseUnfinishedWorkOf(author);
+            });
+            start.countDown();
+            boolean approved = get(approve);
+            release.get();
+
+            assertThat(statusOf(item.id())).isEqualTo(approved ? "approved" : "available");
+        }
+    }
+
     private UUID newSubmission(UUID workItem, UUID submitter) {
         UUID id = UUID.randomUUID();
         jdbc.update(
