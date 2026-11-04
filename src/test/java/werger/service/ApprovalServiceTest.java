@@ -77,6 +77,12 @@ class ApprovalServiceTest {
             calls.add("upstream_pending");
             return transitionMatches;
         }
+
+        @Override
+        public boolean markAwaitingCountersign(UUID id) {
+            calls.add("awaiting_countersign");
+            return transitionMatches;
+        }
     }
 
     private static final class StubReviews extends ReviewRepo {
@@ -109,14 +115,23 @@ class ApprovalServiceTest {
     }
 
     @Test
-    void anUntrustedReviewersApprovalIsNotPushedAndWaitsForACountersign() {
+    void anUntrustedReviewersApprovalIsNotPushedAndWaitsForACountersignInItsOwnStatus() {
         reviews.outcomes = approvals(2);
 
         var outcome = service.onApproved(SUBMISSION, REVIEWER, Role.CONTRIBUTOR);
 
         assertThat(outcome).isEqualTo(new ApprovalOutcome.AwaitingCountersign());
         assertThat(source.pushed).isEmpty();
-        assertThat(workItems.calls).isEmpty();
+        assertThat(workItems.calls).containsExactly("awaiting_countersign");
+    }
+
+    @Test
+    void anUntrustedApprovalWhoseTransitionMatchesNoRowReportsSuperseded() {
+        reviews.outcomes = approvals(2);
+        workItems.transitionMatches = false;
+
+        assertThat(service.onApproved(SUBMISSION, REVIEWER, Role.CONTRIBUTOR))
+                .isEqualTo(new ApprovalOutcome.Superseded());
     }
 
     @Test

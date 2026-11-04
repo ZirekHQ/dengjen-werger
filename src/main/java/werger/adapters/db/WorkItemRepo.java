@@ -139,6 +139,12 @@ public class WorkItemRepo {
                 id);
     }
 
+    /** Parks an untrusted approval so that {@code approved} keeps meaning a push is owed. */
+    public boolean markAwaitingCountersign(UUID id) {
+        return transition(
+                "update work_items set status = 'awaiting_countersign' where id = ? and status = 'approved'", id);
+    }
+
     public boolean markUpstreamApprovalPending(UUID id) {
         return transition(
                 "update work_items set status = 'upstream_approval_pending' where id = ? and status = 'approved'", id);
@@ -179,6 +185,7 @@ public class WorkItemRepo {
                         row.getObject("revision_expires_at", OffsetDateTime.class)
                                 .toInstant());
             case "approved" -> new WorkItemStatus.Approved();
+            case "awaiting_countersign" -> new WorkItemStatus.AwaitingCountersign();
             case "upstream_approval_pending" -> new WorkItemStatus.UpstreamApprovalPending();
             case "synced" -> new WorkItemStatus.Synced();
             case "retired" -> new WorkItemStatus.Retired();

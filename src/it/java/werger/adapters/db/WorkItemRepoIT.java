@@ -436,6 +436,33 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void markAwaitingCountersignOnlyMovesAnApprovedItem() {
+        UUID approved = itemWithStatus("approved");
+        UUID synced = itemWithStatus("synced");
+
+        assertThat(repo.markAwaitingCountersign(approved)).isTrue();
+        assertThat(repo.markAwaitingCountersign(synced)).isFalse();
+        assertThat(statusOf(approved)).isEqualTo("awaiting_countersign");
+        assertThat(statusOf(synced)).isEqualTo("synced");
+    }
+
+    @Test
+    void findMapsAnItemAwaitingCountersign() {
+        UUID waiting = itemWithStatus("awaiting_countersign");
+
+        assertThat(repo.find(waiting).orElseThrow().status()).isEqualTo(new WorkItemStatus.AwaitingCountersign());
+    }
+
+    @Test
+    void anItemAwaitingCountersignCannotBePushedUntilItIsApprovedAgain() {
+        UUID waiting = itemWithStatus("awaiting_countersign");
+
+        assertThat(repo.markSynced(waiting)).isFalse();
+        assertThat(repo.markUpstreamApprovalPending(waiting)).isFalse();
+        assertThat(statusOf(waiting)).isEqualTo("awaiting_countersign");
+    }
+
+    @Test
     void markSyncedOnlyMovesAnApprovedItem() {
         UUID approved = itemWithStatus("approved");
         UUID available = newItem().id();

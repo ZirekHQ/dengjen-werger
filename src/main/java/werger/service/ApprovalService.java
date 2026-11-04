@@ -24,7 +24,9 @@ public class ApprovalService {
     /** Must run after the approving review has committed, so a slow upstream never holds its transaction open. */
     public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
         if (!TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(reviewer, TrustLevel.WINDOW))) {
-            return new ApprovalOutcome.AwaitingCountersign();
+            return recorded(
+                    workItems.markAwaitingCountersign(submission.workItem()),
+                    new ApprovalOutcome.AwaitingCountersign());
         }
         return push(submission);
     }
