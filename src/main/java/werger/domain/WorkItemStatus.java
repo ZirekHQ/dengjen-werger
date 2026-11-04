@@ -14,6 +14,8 @@ public sealed interface WorkItemStatus {
 
     record Approved() implements WorkItemStatus {}
 
+    record AwaitingCountersign() implements WorkItemStatus {}
+
     record UpstreamApprovalPending() implements WorkItemStatus {}
 
     record Synced() implements WorkItemStatus {}

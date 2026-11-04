@@ -33,6 +33,7 @@ class CrowdinSourceTest {
         final List<CrowdinTranslation> submitted;
         final List<String> calls = new ArrayList<>();
         RuntimeException createFailure;
+        RuntimeException approveFailure;
 
         StubClient(List<CrowdinSourceString> strings, List<CrowdinTranslation> approved) {
             this(strings, approved, approved);
@@ -84,6 +85,9 @@ class CrowdinSourceTest {
         @Override
         public void approveTranslation(long translationId) {
             calls.add("approve:" + translationId);
+            if (approveFailure != null) {
+                throw approveFailure;
+            }
         }
     }
 
@@ -231,13 +235,45 @@ class CrowdinSourceTest {
     }
 
     @Test
-    void submitCreatesTheTranslationWithoutApprovingIt() {
+    void submitCreatesTheTranslationThenApprovesTheOneItCreated() {
         var client = new StubClient(List.of(), List.of());
 
         var result = source(client).submit(item("42"), "Silav");
 
         assertThat(result).isInstanceOf(Result.Ok.class);
+        assertThat(client.calls).containsExactly("create:kmr:42:Silav", "approve:900");
+    }
+
+    @Test
+    void submitDoesNotApproveWhenCreatingFails() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure = new IllegalStateException("connection reset");
+
+        source(client).submit(item("42"), "Silav");
+
         assertThat(client.calls).containsExactly("create:kmr:42:Silav");
+    }
+
+    @Test
+    void submitReturnsRejectedWhenCrowdinRefusesTheApproval() {
+        var client = new StubClient(List.of(), List.of());
+        client.approveFailure =
+                new RestClientResponseException("no", HttpStatus.FORBIDDEN, "Forbidden", null, null, null);
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
+    }
+
+    @Test
+    void submitReturnsTransientWhenTheApprovalFailsToReachCrowdin() {
+        var client = new StubClient(List.of(), List.of());
+        client.approveFailure =
+                new RestClientResponseException("down", HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null);
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
     }
 
     @Test
