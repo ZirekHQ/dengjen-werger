@@ -88,14 +88,14 @@ class ReviewServiceIT {
     }
 
     @Test
-    void approvalMarksTheItemApproved() {
+    void anUntrustedApprovalHoldsTheItemForACountersign() {
         Submission submission = db.pendingSubmission(db.newUser(), NOW);
 
         var result =
                 service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result).isInstanceOf(Result.Ok.class);
-        assertThat(db.statusOf(submission.workItem())).isEqualTo("approved");
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("awaiting_countersign");
         assertThat(reviewCount(submission)).isEqualTo(1);
     }
 
@@ -171,7 +171,8 @@ class ReviewServiceIT {
 
             assertThat(winners).isEqualTo(1);
             assertThat(reviewCount(submission)).isEqualTo(1);
-            int expectedRows = db.statusOf(submission.workItem()).equals("approved") ? 2 : 1;
+            // Every reviewer here is an untrusted contributor, so a winning approval ends in awaiting_countersign.
+            int expectedRows = db.statusOf(submission.workItem()).equals("awaiting_countersign") ? 2 : 1;
             assertThat(ledgerRows(submission)).isEqualTo(expectedRows);
         }
     }
@@ -229,13 +230,13 @@ class ReviewServiceIT {
     }
 
     @Test
-    void aReviewerWithoutAnEarnedRecordLeavesTheApprovalQueuedAndUnpushed() {
+    void aReviewerWithoutAnEarnedRecordLeavesTheApprovalAwaitingACountersignAndUnpushed() {
         Submission submission = db.pendingSubmission(db.newUser(), NOW);
 
         service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(pushed).isEmpty();
-        assertThat(db.statusOf(submission.workItem())).isEqualTo("approved");
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("awaiting_countersign");
     }
 
     @Test
