@@ -113,6 +113,14 @@ public class WorkItemRepo {
                 """, id, submissionId);
     }
 
+    /** Records an untrusted approval, so that {@code approved} keeps meaning a trusted push is owed. */
+    public boolean markAwaitingCountersign(UUID id, UUID submissionId) {
+        return transition("""
+                update work_items set status = 'awaiting_countersign'
+                where id = ? and status = 'pending_review' and pending_submission_id = ?
+                """, id, submissionId);
+    }
+
     public boolean moveToRevisionPending(
             UUID id, UUID submissionId, UUID submitter, Optional<String> comment, Instant expiresAt) {
         return transition("""
@@ -154,12 +162,6 @@ public class WorkItemRepo {
         return transition(
                 "update work_items set status = 'synced' where id = ? and status in ('approved', 'upstream_approval_pending')",
                 id);
-    }
-
-    /** Parks an untrusted approval so that {@code approved} keeps meaning a push is owed. */
-    public boolean markAwaitingCountersign(UUID id) {
-        return transition(
-                "update work_items set status = 'awaiting_countersign' where id = ? and status = 'approved'", id);
     }
 
     public boolean markUpstreamApprovalPending(UUID id) {
