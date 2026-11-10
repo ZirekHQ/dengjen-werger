@@ -75,14 +75,23 @@ public class CrowdinSource implements TranslationSource {
     // Crowdin holds only a suggestion.
     private Result<SourceError, Void> create(WorkItem item, long stringId, String translation) {
         try {
-            CrowdinCreatedTranslation created = client.createTranslation(item.language(), stringId, translation);
-            client.approveTranslation(created.id());
+            client.approveTranslation(translationId(item, stringId, translation));
             return Result.ok(null);
         } catch (RestClientResponseException e) {
             return Result.err(toError(e));
         } catch (RuntimeException e) {
             return Result.err(new SourceError.Transient(String.valueOf(e.getMessage())));
         }
+    }
+
+    // A retry after a failed approval finds the translation already on Crowdin; creating it again would duplicate it.
+    private long translationId(WorkItem item, long stringId, String translation) {
+        return client.stringTranslations(item.language(), stringId).stream()
+                .filter(t -> t.text().equals(translation))
+                .map(CrowdinStringTranslation::id)
+                .findFirst()
+                .orElseGet(() -> client.createTranslation(item.language(), stringId, translation)
+                        .id());
     }
 
     // A string can hold several submissions; the highest translationId is the most recent one.
