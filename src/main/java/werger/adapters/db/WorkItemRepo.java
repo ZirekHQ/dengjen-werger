@@ -65,6 +65,23 @@ public class WorkItemRepo {
         return rows == 1;
     }
 
+    /**
+     * Returns to the pool every item waiting on {@code user}: one they leased, one whose pending submission they wrote,
+     * and one in their revision window. Each branch is status-gated, so an item a reviewer has just approved stays
+     * approved. Reports how many were released.
+     */
+    public int releaseUnfinishedWorkOf(UUID user) {
+        return jdbc.update("""
+                update work_items
+                set status = 'available', leased_by = null, lease_expires_at = null, pending_submission_id = null,
+                    revision_submitter = null, revision_comment = null, revision_expires_at = null
+                where (status = 'in_progress' and leased_by = ?)
+                   or (status = 'pending_review'
+                       and pending_submission_id in (select id from submissions where submitter_id = ?))
+                   or (status = 'revision_pending' and revision_submitter = ?)
+                """, user, user, user);
+    }
+
     /** Returns leased items whose lease ended before {@code now} to the pool, and reports how many were released. */
     public int releaseExpired(Instant now) {
         return jdbc.update("""
@@ -92,6 +109,14 @@ public class WorkItemRepo {
     public boolean markApproved(UUID id, UUID submissionId) {
         return transition("""
                 update work_items set status = 'approved'
+                where id = ? and status = 'pending_review' and pending_submission_id = ?
+                """, id, submissionId);
+    }
+
+    /** Records an untrusted approval, so that {@code approved} keeps meaning a trusted push is owed. */
+    public boolean markAwaitingCountersign(UUID id, UUID submissionId) {
+        return transition("""
+                update work_items set status = 'awaiting_countersign'
                 where id = ? and status = 'pending_review' and pending_submission_id = ?
                 """, id, submissionId);
     }
@@ -179,6 +204,7 @@ public class WorkItemRepo {
                         row.getObject("revision_expires_at", OffsetDateTime.class)
                                 .toInstant());
             case "approved" -> new WorkItemStatus.Approved();
+            case "awaiting_countersign" -> new WorkItemStatus.AwaitingCountersign();
             case "upstream_approval_pending" -> new WorkItemStatus.UpstreamApprovalPending();
             case "synced" -> new WorkItemStatus.Synced();
             case "retired" -> new WorkItemStatus.Retired();

@@ -8,7 +8,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import werger.domain.Review;
 import werger.domain.ReviewVerdict;
 
@@ -31,6 +33,21 @@ public class ReviewRepo {
                 review.verdict().name().toLowerCase(Locale.ROOT),
                 review.comment().orElse(null),
                 OffsetDateTime.ofInstant(review.reviewedAt(), ZoneOffset.UTC));
+    }
+
+    /**
+     * Holds a transaction-scoped lock on both users' trust records until the surrounding transaction ends. The locks are
+     * taken in a fixed order, so two reviews that name the same pair of users cannot deadlock.
+     */
+    public void lockTrustOf(UUID first, UUID second) {
+        Stream.of(first, second).sorted().forEach(this::lockTrustOf);
+    }
+
+    private void lockTrustOf(UUID user) {
+        jdbc.query(
+                "select pg_advisory_xact_lock(hashtextextended(?, 0))",
+                (RowCallbackHandler) row -> {},
+                user.toString());
     }
 
     /** The newest {@code limit} reviews of submissions that {@code submitter} wrote, which is their approval record. */

@@ -24,6 +24,7 @@ import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.SubmissionRepo;
 import werger.adapters.db.WorkItemRepo;
 import werger.domain.Language;
+import werger.domain.Review;
 import werger.domain.ReviewVerdict;
 import werger.domain.Role;
 import werger.domain.Submission;
@@ -52,7 +53,7 @@ class ReviewServiceIT {
                 new SubmissionRepo(db.jdbc()),
                 new ReviewRepo(db.jdbc()),
                 new PointsRepo(db.jdbc()),
-                new ApprovalService(new RecordingSource(), workItems, new ReviewRepo(db.jdbc())),
+                new ApprovalService(new RecordingSource(), workItems),
                 db.transactions(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -88,14 +89,14 @@ class ReviewServiceIT {
     }
 
     @Test
-    void approvalMarksTheItemApproved() {
+    void anUntrustedApprovalHoldsTheItemForACountersign() {
         Submission submission = db.pendingSubmission(db.newUser(), NOW);
 
         var result =
                 service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result).isInstanceOf(Result.Ok.class);
-        assertThat(db.statusOf(submission.workItem())).isEqualTo("approved");
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("awaiting_countersign");
         assertThat(reviewCount(submission)).isEqualTo(1);
     }
 
@@ -171,7 +172,8 @@ class ReviewServiceIT {
 
             assertThat(winners).isEqualTo(1);
             assertThat(reviewCount(submission)).isEqualTo(1);
-            int expectedRows = db.statusOf(submission.workItem()).equals("approved") ? 2 : 1;
+            // Every reviewer here is an untrusted contributor, so a winning approval ends in awaiting_countersign.
+            int expectedRows = db.statusOf(submission.workItem()).equals("awaiting_countersign") ? 2 : 1;
             assertThat(ledgerRows(submission)).isEqualTo(expectedRows);
         }
     }
@@ -229,13 +231,64 @@ class ReviewServiceIT {
     }
 
     @Test
-    void aReviewerWithoutAnEarnedRecordLeavesTheApprovalQueuedAndUnpushed() {
+    void aReviewerWithoutAnEarnedRecordLeavesTheApprovalAwaitingACountersignAndUnpushed() {
         Submission submission = db.pendingSubmission(db.newUser(), NOW);
 
         service.review(submission, db.newUser(), Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(pushed).isEmpty();
-        assertThat(db.statusOf(submission.workItem())).isEqualTo("approved");
+        assertThat(db.statusOf(submission.workItem())).isEqualTo("awaiting_countersign");
+    }
+
+    // Nine approvals is the shortest perfect record that clears the trust bar; one rejection drops it below.
+    private UUID contributorOneRejectionAwayFromLosingTrust() {
+        UUID author = db.newUser();
+        ReviewRepo reviewRepo = new ReviewRepo(db.jdbc());
+        IntStream.range(0, 9).forEach(i -> {
+            Submission earned = db.pendingSubmission(author, NOW);
+            reviewRepo.insert(new Review(
+                    earned.id(), db.newUser(), ReviewVerdict.APPROVED, Optional.empty(), NOW.minusSeconds(100 - i)));
+        });
+        return author;
+    }
+
+    @Test
+    void aReviewWaitsForAConcurrentDecisionThatLowersTheReviewersTrust() throws Exception {
+        UUID reviewer = contributorOneRejectionAwayFromLosingTrust();
+        Submission lastOwn = db.pendingSubmission(reviewer, NOW);
+        Submission toApprove = db.pendingSubmission(db.newUser(), NOW);
+        ReviewRepo reviewRepo = new ReviewRepo(db.jdbc());
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> rejection = executor.submit(() -> db.transactions().executeWithoutResult(status -> {
+                UUID rejecter = db.newUser();
+                reviewRepo.lockTrustOf(lastOwn.submitter(), rejecter);
+                reviewRepo.insert(new Review(lastOwn.id(), rejecter, ReviewVerdict.REJECTED, Optional.empty(), NOW));
+                locked.countDown();
+                await(release);
+            }));
+            locked.await();
+            Future<?> approval = executor.submit(() ->
+                    service.review(toApprove, reviewer, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty()));
+            Thread.sleep(300);
+            release.countDown();
+            rejection.get();
+            approval.get();
+        }
+
+        assertThat(pushed).isEmpty();
+        assertThat(db.statusOf(toApprove.workItem())).isEqualTo("awaiting_countersign");
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

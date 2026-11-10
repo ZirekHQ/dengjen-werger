@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import werger.adapters.db.PointsRepo;
@@ -53,6 +54,12 @@ class ReviewServiceTest {
         }
 
         @Override
+        public boolean markAwaitingCountersign(UUID id, UUID submissionId) {
+            calls.add("awaiting_countersign");
+            return transitionWins;
+        }
+
+        @Override
         public boolean moveToRevisionPending(
                 UUID id, UUID submissionId, UUID submitter, Optional<String> comment, Instant expiresAt) {
             calls.add("revision:" + submitter);
@@ -64,9 +71,20 @@ class ReviewServiceTest {
 
     private static final class StubReviews extends ReviewRepo {
         final List<Review> inserted = new ArrayList<>();
+        List<Review> outcomes = List.of();
 
         StubReviews() {
             super(new JdbcTemplate());
+        }
+
+        @Override
+        public void lockTrustOf(UUID first, UUID second) {
+            // No database: the lock is exercised against Postgres in ReviewServiceIT.
+        }
+
+        @Override
+        public List<Review> decidedOutcomesOf(UUID submitter, int limit) {
+            return outcomes;
         }
 
         @Override
@@ -93,13 +111,13 @@ class ReviewServiceTest {
         final List<String> calls = new ArrayList<>();
 
         StubApprovals() {
-            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()), new ReviewRepo(new JdbcTemplate()));
+            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()));
         }
 
         @Override
-        public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
-            calls.add(reviewer + ":" + reviewerRole);
-            return new ApprovalOutcome.AwaitingCountersign();
+        public ApprovalOutcome pushApproved(Submission submission) {
+            calls.add(submission.id().toString());
+            return new ApprovalOutcome.Synced();
         }
     }
 
@@ -145,8 +163,8 @@ class ReviewServiceTest {
     }
 
     @Test
-    void approvalMarksTheItemApprovedAndRecordsTheReview() {
-        var result = service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+    void aTrustedApprovalMarksTheItemApprovedAndRecordsTheReview() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result).isInstanceOf(Result.Ok.class);
         assertThat(workItems.calls).containsExactly("approved");
@@ -155,6 +173,28 @@ class ReviewServiceTest {
             assertThat(review.reviewer()).isEqualTo(REVIEWER);
             assertThat(review.reviewedAt()).isEqualTo(NOW);
         });
+    }
+
+    @Test
+    void anUntrustedApprovalCommitsAsAwaitingCountersignAndIsNeverPushed() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.AwaitingCountersign())));
+        assertThat(workItems.calls).containsExactly("awaiting_countersign");
+        assertThat(approvals.calls).isEmpty();
+    }
+
+    @Test
+    void aContributorWithAnEarnedRecordCommitsAsApprovedAndIsPushed() {
+        reviews.outcomes = IntStream.range(0, TrustLevel.WINDOW)
+                .mapToObj(i ->
+                        new Review(UUID.randomUUID(), UUID.randomUUID(), ReviewVerdict.APPROVED, Optional.empty(), NOW))
+                .toList();
+
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(workItems.calls).containsExactly("approved");
+        assertThat(approvals.calls).containsExactly(SUBMISSION.id().toString());
     }
 
     @Test
@@ -220,11 +260,11 @@ class ReviewServiceTest {
     }
 
     @Test
-    void anApprovalHandsTheReviewersIdentityAndRoleToTheApprovalGate() {
+    void aTrustedApprovalHandsTheSubmissionToTheApprovalGate() {
         var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
 
-        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.AwaitingCountersign())));
-        assertThat(approvals.calls).containsExactly(REVIEWER + ":MAINTAINER");
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.Synced())));
+        assertThat(approvals.calls).containsExactly(SUBMISSION.id().toString());
     }
 
     @Test

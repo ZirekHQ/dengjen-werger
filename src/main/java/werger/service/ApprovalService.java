@@ -1,35 +1,23 @@
 package werger.service;
 
-import java.util.UUID;
-import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.WorkItemRepo;
-import werger.domain.Role;
 import werger.domain.Submission;
 import werger.domain.WorkItem;
 import werger.ports.SourceError;
 import werger.ports.TranslationSource;
 
-/** Pushes an approved translation upstream when the reviewer is trusted to, and queues it otherwise. */
+/** Pushes a trusted approval upstream and records whether it landed. */
 public class ApprovalService {
     private final TranslationSource source;
     private final WorkItemRepo workItems;
-    private final ReviewRepo reviews;
 
-    public ApprovalService(TranslationSource source, WorkItemRepo workItems, ReviewRepo reviews) {
+    public ApprovalService(TranslationSource source, WorkItemRepo workItems) {
         this.source = source;
         this.workItems = workItems;
-        this.reviews = reviews;
     }
 
     /** Must run after the approving review has committed, so a slow upstream never holds its transaction open. */
-    public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
-        if (!TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(reviewer, TrustLevel.WINDOW))) {
-            return new ApprovalOutcome.AwaitingCountersign();
-        }
-        return push(submission);
-    }
-
-    private ApprovalOutcome push(Submission submission) {
+    public ApprovalOutcome pushApproved(Submission submission) {
         WorkItem item = workItems
                 .find(submission.workItem())
                 .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
