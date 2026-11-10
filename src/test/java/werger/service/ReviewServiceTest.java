@@ -78,6 +78,11 @@ class ReviewServiceTest {
         }
 
         @Override
+        public void lockTrustOf(UUID first, UUID second) {
+            // No database: the lock is exercised against Postgres in ReviewServiceIT.
+        }
+
+        @Override
         public List<Review> decidedOutcomesOf(UUID submitter, int limit) {
             return outcomes;
         }

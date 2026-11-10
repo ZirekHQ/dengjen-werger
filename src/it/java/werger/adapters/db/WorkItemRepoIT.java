@@ -511,7 +511,7 @@ class WorkItemRepoIT {
         WorkItem item = newItem();
         UUID submission = newSubmission(item.id(), user);
         awaitReview(item.id(), submission);
-        repo.markAwaitingCountersign(item.id(), submission);
+        repo.markApprovedAwaitingCountersign(item.id(), submission);
 
         int released = repo.releaseUnfinishedWorkOf(user);
 
