@@ -66,10 +66,8 @@ public class ReviewService {
             return Result.err(new ReviewError.OwnSubmission());
         }
         Review review = new Review(submission.id(), reviewer, verdict, comment, clock.instant());
-        boolean trusted = verdict == ReviewVerdict.APPROVED
-                && TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(reviewer, TrustLevel.WINDOW));
-        return Objects.requireNonNull(transactions.execute(status -> decide(status, submission, review, trusted)))
-                .fold(Result::err, ok -> Result.ok(afterCommit(submission, review, trusted)));
+        return Objects.requireNonNull(transactions.execute(status -> decide(status, submission, review, reviewerRole)))
+                .fold(Result::err, trusted -> Result.ok(afterCommit(submission, review, trusted)));
     }
 
     private Optional<ApprovalOutcome> afterCommit(Submission submission, Review review, boolean trusted) {
@@ -79,16 +77,25 @@ public class ReviewService {
         return Optional.of(trusted ? approvals.pushApproved(submission) : new ApprovalOutcome.AwaitingCountersign());
     }
 
-    // The status-gated transition runs first so that of two racing reviewers only one reaches the review insert.
-    private Result<ReviewError, Void> decide(
-            TransactionStatus status, Submission submission, Review review, boolean trusted) {
+    // Both users are locked before trust is read, so a concurrent decision on the reviewer's own submission cannot
+    // change their record between the read and this commit. The status-gated transition then runs before the insert,
+    // so of two racing reviewers only one reaches it.
+    private Result<ReviewError, Boolean> decide(
+            TransactionStatus status, Submission submission, Review review, Role reviewerRole) {
+        reviews.lockTrustOf(submission.submitter(), review.reviewer());
+        boolean trusted = isTrustedApproval(review, reviewerRole);
         if (!transition(submission, review, trusted)) {
             status.setRollbackOnly();
             return Result.err(new ReviewError.AlreadyDecided());
         }
         reviews.insert(review);
         payOut(submission, review);
-        return Result.ok(null);
+        return Result.ok(trusted);
+    }
+
+    private boolean isTrustedApproval(Review review, Role reviewerRole) {
+        return review.verdict() == ReviewVerdict.APPROVED
+                && TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(review.reviewer(), TrustLevel.WINDOW));
     }
 
     // Runs in the same transaction as the transition, so a rollback also voids the payout.
