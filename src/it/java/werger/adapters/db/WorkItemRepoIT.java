@@ -460,6 +460,20 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void releaseUnfinishedWorkOfKeepsAnApprovalAwaitingCountersign() {
+        UUID user = newUser();
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), user);
+        awaitReview(item.id(), submission);
+        repo.markAwaitingCountersign(item.id(), submission);
+
+        int released = repo.releaseUnfinishedWorkOf(user);
+
+        assertThat(released).isZero();
+        assertThat(statusOf(item.id())).isEqualTo("awaiting_countersign");
+    }
+
+    @Test
     void releaseUnfinishedWorkOfKeepsApprovedContributionsAndOtherUsersWork() {
         UUID user = newUser();
         UUID other = newUser();
