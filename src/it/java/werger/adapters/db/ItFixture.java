@@ -6,6 +6,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,6 +19,8 @@ public final class ItFixture implements AutoCloseable {
     private final String adapter;
     private final HikariDataSource pool;
     private final JdbcTemplate jdbc;
+    // A purged user loses the auth ref that cleanup matches on, so created users are also remembered by id.
+    private final List<UUID> createdUsers = new ArrayList<>();
 
     private ItFixture(String adapter, HikariDataSource pool) {
         this.adapter = adapter;
@@ -57,6 +60,7 @@ public final class ItFixture implements AutoCloseable {
                 id,
                 adapter + "-" + id,
                 status);
+        createdUsers.add(id);
         return id;
     }
 
@@ -109,6 +113,7 @@ public final class ItFixture implements AutoCloseable {
             jdbc.update("delete from submissions where work_item_id in (" + ownedItems + ")", adapter);
             jdbc.update("delete from work_items where source_adapter = ?", adapter);
             jdbc.update("delete from users where auth_provider_ref like ?", adapter + "-%");
+            createdUsers.forEach(id -> jdbc.update("delete from users where id = ?", id));
         } finally {
             pool.close();
         }
