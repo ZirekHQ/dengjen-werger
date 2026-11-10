@@ -34,6 +34,7 @@ class CrowdinSourceTest {
         final List<String> calls = new ArrayList<>();
         RuntimeException createFailure;
         RuntimeException approveFailure;
+        List<CrowdinStringTranslation> existing = List.of();
 
         StubClient(List<CrowdinSourceString> strings, List<CrowdinTranslation> approved) {
             this(strings, approved, approved);
@@ -71,6 +72,12 @@ class CrowdinSourceTest {
         @Override
         public List<CrowdinTranslation> approvedTranslations(String languageId, long fileId) {
             return languageId.equals("kmr") && fileId == FILE_ID ? approved : List.of();
+        }
+
+        @Override
+        public List<CrowdinStringTranslation> stringTranslations(String languageId, long stringId) {
+            calls.add("lookup:" + languageId + ":" + stringId);
+            return existing;
         }
 
         @Override
@@ -241,7 +248,18 @@ class CrowdinSourceTest {
         var result = source(client).submit(item("42"), "Silav");
 
         assertThat(result).isInstanceOf(Result.Ok.class);
-        assertThat(client.calls).containsExactly("create:kmr:42:Silav", "approve:900");
+        assertThat(client.calls).containsExactly("lookup:kmr:42", "create:kmr:42:Silav", "approve:900");
+    }
+
+    @Test
+    void submitApprovesTheExistingTranslationInsteadOfCreatingADuplicateOnRetry() {
+        var client = new StubClient(List.of(), List.of());
+        client.existing = List.of(new CrowdinStringTranslation(7L, "Other"), new CrowdinStringTranslation(8L, "Silav"));
+
+        var result = source(client).submit(item("42"), "Silav");
+
+        assertThat(result).isInstanceOf(Result.Ok.class);
+        assertThat(client.calls).containsExactly("lookup:kmr:42", "approve:8");
     }
 
     @Test
@@ -251,7 +269,7 @@ class CrowdinSourceTest {
 
         source(client).submit(item("42"), "Silav");
 
-        assertThat(client.calls).containsExactly("create:kmr:42:Silav");
+        assertThat(client.calls).containsExactly("lookup:kmr:42", "create:kmr:42:Silav");
     }
 
     @Test

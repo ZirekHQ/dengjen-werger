@@ -113,6 +113,16 @@ public class CrowdinClient {
                 .toList();
     }
 
+    public List<CrowdinStringTranslation> stringTranslations(String languageId, long stringId) {
+        return paginate(
+                offset -> resource("translations", offset)
+                        .queryParam("stringId", stringId)
+                        .queryParam("languageId", languageId)
+                        .build()
+                        .toUri(),
+                new ParameterizedTypeReference<CrowdinEnvelope<CrowdinStringTranslation>>() {});
+    }
+
     public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
         CrowdinEnvelope.Wrapped<CrowdinCreatedTranslation> created = post(
                         "translations", Map.of("stringId", stringId, "languageId", languageId, "text", text))
