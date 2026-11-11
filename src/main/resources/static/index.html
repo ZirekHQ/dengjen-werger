@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dengjen Werger: pronunciation</title>
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <h1>Help the Kurmanji voice say words right</h1>
+    <p id="who" hidden></p>
+    <button type="button" id="sign-out" hidden>Sign out</button>
+  </header>
+
+  <main id="main">
+    <output id="status" aria-live="polite"></output>
+
+    <section id="sign-in" aria-labelledby="sign-in-heading" hidden>
+      <h2 id="sign-in-heading">Sign in</h2>
+      <p>No account to create: the first sign-in sets you up.</p>
+      <form id="email-form">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+        <button type="submit">Email me a sign-in link</button>
+      </form>
+      <p><button type="button" id="google">Sign in with Google</button></p>
+    </section>
+
+    <section id="suggest" aria-labelledby="suggest-heading" hidden>
+      <h2 id="suggest-heading">Suggest how a word should sound</h2>
+      <form id="suggest-form" aria-describedby="suggest-help">
+        <p id="suggest-help">Write the word as it is spelled, then how the voice should say it. Use ordinary
+          Kurmanji letters, or IPA between slashes such as /ˈwelat/.</p>
+        <label for="written">Word as written</label>
+        <input id="written" name="written" required autocomplete="off">
+        <label for="say">How it should sound</label>
+        <input id="say" name="say" required autocomplete="off">
+        <label for="note">Note for the reviewer (optional)</label>
+        <textarea id="note" name="note" rows="2"></textarea>
+        <button type="submit">Send suggestion</button>
+      </form>
+    </section>
+
+    <section id="review" aria-labelledby="review-heading" hidden>
+      <h2 id="review-heading">Review another speaker's suggestion</h2>
+      <p>You never see your own suggestions here, and you don't see who made one.</p>
+      <button type="button" id="next">Show the next suggestion</button>
+      <div id="fix" hidden>
+        <dl>
+          <dt>Written</dt><dd id="fix-written"></dd>
+          <dt>Should sound like</dt><dd id="fix-say"></dd>
+          <dt>Note</dt><dd id="fix-note"></dd>
+        </dl>
+        <label for="comment">Comment (optional)</label>
+        <textarea id="comment" rows="2"></textarea>
+        <button type="button" id="approve">Approve</button>
+        <button type="button" id="reject">Reject</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

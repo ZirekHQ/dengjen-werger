@@ -67,7 +67,7 @@ reviews it, and an approved fix lands as a row of dengjen's lexicon file
 |1. Lexicon row rules |`PronunciationFix`, `PronunciationSay`, `LexiconRow`: validates input against the lexicon format and renders the row |Done
 |2. Storage and review |`V04` migration, `PronunciationFixRepo`, `PronunciationFixService`: submit, review, no self-review, race-tested |Done
 |3. Lexicon pull request |`LexiconPublisher`, `V05` landed/superseded states, and `GitHubLexiconTarget`, which opens or updates the pull request on `ZirekHQ/dengjen`; the jobs endpoint (18) will run it |Done
-|4. Listening page |Test sentences, "sounds right / sounds wrong", the suggestion form; needs auth (17) and the SPA (19) |Not started
+|4. Listening page |Test sentences, "sounds right / sounds wrong", the suggestion form; needs auth (17) and the SPA (19) |In progress: sign-in (Supabase tokens, users provisioned on first sign-in) and the suggestion and review API are done; the page itself is next
 |===
 
 == Then: Milestone 3 — Contributor-Facing Surface
