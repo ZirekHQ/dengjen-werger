@@ -66,7 +66,7 @@ reviews it, and an approved fix lands as a row of dengjen's lexicon file
 
 |1. Lexicon row rules |`PronunciationFix`, `PronunciationSay`, `LexiconRow`: validates input against the lexicon format and renders the row |Done
 |2. Storage and review |`V04` migration, `PronunciationFixRepo`, `PronunciationFixService`: submit, review, no self-review, race-tested |Done
-|3. Lexicon pull request |Adapter that opens or updates the pull request on `ZirekHQ/dengjen` with approved rows |Not started
+|3. Lexicon pull request |`LexiconPublisher`, `LexiconTarget` port, `V05` landed/superseded states: done. GitHub adapter that opens or updates the pull request on `ZirekHQ/dengjen`: not started |In progress
 |4. Listening page |Test sentences, "sounds right / sounds wrong", the suggestion form; needs auth (17) and the SPA (19) |Not started
 |===
 
