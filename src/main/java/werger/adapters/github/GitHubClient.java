@@ -50,10 +50,12 @@ public class GitHubClient {
         this.repo = repo;
     }
 
+    /** The URL of {@code path} under this repository's API. */
     private UriComponentsBuilder at(String path) {
         return UriComponentsBuilder.fromUriString(API + owner + "/" + repo + "/" + path);
     }
 
+    /** Signs a request and asks for API version 2022-11-28 in the {@code accept} format. */
     private void headers(HttpHeaders headers, MediaType accept) {
         headers.setBearerAuth(token);
         headers.setAccept(List.of(accept));
@@ -139,11 +141,15 @@ public class GitHubClient {
         return Objects.requireNonNull(pull);
     }
 
-    /** Replaces the description of pull request {@code number}. */
-    public void updatePullBody(long number, String body) {
-        send(HttpMethod.PATCH, at("pulls/" + number).build().toUri(), Map.of("body", body));
+    /**
+     * Replaces the description of pull request {@code number} and points it back at {@code base}, in case someone
+     * retargeted it: one call, so the pull request never says one thing while targeting another branch.
+     */
+    public void updatePull(long number, String base, String body) {
+        send(HttpMethod.PATCH, at("pulls/" + number).build().toUri(), Map.of("base", base, "body", body));
     }
 
+    /** POSTs {@code body} to {@code path} and returns the SHA of the Git object GitHub created. */
     private String create(String path, Map<String, Object> body) {
         Created created = http.post()
                 .uri(at(path).build().toUri())
@@ -155,6 +161,7 @@ public class GitHubClient {
         return Objects.requireNonNull(created).sha();
     }
 
+    /** Sends {@code body} as JSON and ignores the response body. */
     private void send(HttpMethod method, URI uri, Map<String, Object> body) {
         http.method(method)
                 .uri(uri)

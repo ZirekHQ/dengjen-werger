@@ -21,6 +21,7 @@ import werger.ports.LexiconTarget;
 import werger.ports.Result;
 import werger.ports.SourceError;
 
+/** {@link GitHubLexiconTarget} against a mocked GitHub REST API. */
 class GitHubLexiconTargetTest {
     private static final String REPO = "https://api.github.com/repos/ZirekHQ/dengjen/";
     private static final String FILE = REPO + "contents/crates/text/kurmanji-phonemizer/lexicon/kmr.tsv";
@@ -37,18 +38,21 @@ class GitHubLexiconTargetTest {
     private final GitHubLexiconTarget target =
             new GitHubLexiconTarget(new GitHubClient(builder.build(), "test-token", "ZirekHQ", "dengjen"), "main");
 
+    /** GitHub lists {@code json} as the open pull requests from the proposal branch. */
     private void expectOpenPulls(String json) {
         server.expect(requestTo(REPO + "pulls?head=ZirekHQ:" + BRANCH + "&state=open"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
     }
 
+    /** GitHub serves {@code content} as the lexicon at {@code ref}. */
     private void expectRawFile(String ref, String content) {
         server.expect(requestTo(FILE + "?ref=" + ref))
                 .andExpect(header("Accept", "application/vnd.github.raw+json"))
                 .andRespond(withSuccess(content.getBytes(StandardCharsets.UTF_8), MediaType.TEXT_PLAIN));
     }
 
+    /** The proposal is committed with the snapshot's revision as its only parent. */
     private void expectCommit(String content) {
         server.expect(requestTo(REPO + "git/commits/main-sha"))
                 .andExpect(method(HttpMethod.GET))
@@ -70,6 +74,7 @@ class GitHubLexiconTargetTest {
                         {"sha":"proposal-sha"}""", MediaType.APPLICATION_JSON));
     }
 
+    /** The proposal is committed and a new branch is created at it. */
     private void expectCommitOntoAFreshBranch(String content) {
         expectCommit(content);
         server.expect(requestTo(REPO + "git/refs"))
@@ -79,6 +84,7 @@ class GitHubLexiconTargetTest {
                 .andRespond(withStatus(HttpStatus.CREATED));
     }
 
+    /** The proposal is committed and the existing branch is forced to it. */
     private void expectCommitOntoTheExistingBranch(String content) {
         expectCommit(content);
         server.expect(requestTo(REPO + "git/refs"))
@@ -137,12 +143,14 @@ class GitHubLexiconTargetTest {
     }
 
     @Test
-    void anOpenPullRequestWithTheSameFileOnlyGetsTheNewDescription() {
+    void anOpenPullRequestWithTheSameFileOnlyGetsTheNewDescriptionAndIsKeptOnTheBase() {
         expectOpenPulls(PULL);
         expectRawFile(BRANCH, LEXICON);
         server.expect(requestTo(REPO + "pulls/7"))
                 .andExpect(method(HttpMethod.PATCH))
                 .andExpect(jsonPath("$.body").value("the rows"))
+                // Someone may have retargeted it by hand; pointing it back keeps one pull request per language.
+                .andExpect(jsonPath("$.base").value("main"))
                 .andRespond(withSuccess());
 
         assertThat(target.propose("kmr", SNAPSHOT, LEXICON, "the rows"))

@@ -32,10 +32,12 @@ public class GitHubLexiconTarget implements LexiconTarget {
         this.base = base;
     }
 
+    /** Where dengjen keeps the lexicon for {@code language}. */
     static String path(String language) {
         return "crates/text/kurmanji-phonemizer/lexicon/" + language + ".tsv";
     }
 
+    /** The branch Werger owns for {@code language}'s proposal. */
     static String branch(String language) {
         return "werger/lexicon-" + language;
     }
@@ -55,6 +57,7 @@ public class GitHubLexiconTarget implements LexiconTarget {
         return attempt(() -> proposeOrThrow(language, base, content, description));
     }
 
+    /** Commits {@code content} if the open proposal differs, then opens the pull request or refreshes the open one. */
     private URI proposeOrThrow(String language, Snapshot snapshot, String content, String description) {
         String path = path(language);
         String branch = branch(language);
@@ -65,17 +68,19 @@ public class GitHubLexiconTarget implements LexiconTarget {
             github.pointBranch(branch, github.commitFile(snapshot.revision(), path, content, title(language)));
         }
         return open.map(pull -> {
-                    github.updatePullBody(pull.number(), description);
+                    github.updatePull(pull.number(), base, description);
                     return pull.htmlUrl();
                 })
                 .orElseGet(() -> github.createPull(title(language), branch, base, description)
                         .htmlUrl());
     }
 
+    /** The commit message and pull request title for {@code language}. */
     private static String title(String language) {
         return "feat(lexicon): add pronunciation fixes from native speakers (" + language + ")";
     }
 
+    /** Runs {@code call}, turning a failed request into a {@link SourceError}. */
     private static <A> Result<SourceError, A> attempt(Supplier<A> call) {
         try {
             return Result.ok(call.get());
@@ -86,14 +91,14 @@ public class GitHubLexiconTarget implements LexiconTarget {
         }
     }
 
-    // 4xx means GitHub refused this request (a bad token, a protected branch), except the codes that clear on retry.
+    /** 4xx means GitHub refused this request (a bad token, a protected branch), except the codes that clear on retry. */
     private static SourceError toError(RestClientResponseException e) {
         return e.getStatusCode().is4xxClientError() && !RETRYABLE_4XX.contains(e.getStatusCode()) && !rateLimited(e)
                 ? new SourceError.Rejected("GitHub rejected the request: " + e.getStatusCode())
                 : new SourceError.Transient("GitHub returned " + e.getStatusCode());
     }
 
-    // GitHub answers a spent rate limit with 403 as well as 429, and marks it only in these headers.
+    /** GitHub answers a spent rate limit with 403 as well as 429, and marks it only in these headers. */
     private static boolean rateLimited(RestClientResponseException e) {
         HttpHeaders headers = Optional.ofNullable(e.getResponseHeaders()).orElseGet(HttpHeaders::new);
         return "0".equals(headers.getFirst("X-RateLimit-Remaining")) || headers.containsHeader(HttpHeaders.RETRY_AFTER);
