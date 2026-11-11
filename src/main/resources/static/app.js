@@ -3,6 +3,9 @@ const STORE = "werger.session";
 const $ = (id) => document.getElementById(id);
 let config;
 let fix;
+let sentences = [];
+let current = 0;
+const SIGNED_IN = ["listen", "suggest", "review", "who", "sign-out"];
 
 function say(message) {
   $("status").textContent = message;
@@ -110,7 +113,7 @@ async function problem(response) {
 }
 
 function showSignIn() {
-  for (const id of ["suggest", "review", "who", "sign-out"]) {
+  for (const id of SIGNED_IN) {
     $(id).hidden = true;
   }
   $("sign-in").hidden = false;
@@ -128,11 +131,93 @@ async function showSignedIn() {
   }
   const me = await response.json();
   $("who").textContent = `Signed in as a ${me.role}.`;
-  for (const id of ["suggest", "review", "who", "sign-out"]) {
+  for (const id of SIGNED_IN) {
     $(id).hidden = false;
   }
   $("sign-in").hidden = true;
+  await loadSentences();
 }
+
+// Plays audio the API returns, or says why there is none.
+async function play(response) {
+  if (!response.ok) {
+    say(`No audio: ${await problem(response)}.`);
+    return false;
+  }
+  const player = $("player");
+  URL.revokeObjectURL(player.src);
+  player.src = URL.createObjectURL(await response.blob());
+  await player.play();
+  return true;
+}
+
+async function loadSentences() {
+  const response = await api("/listening/sentences");
+  sentences = response.ok ? await response.json() : [];
+  current = 0;
+  showSentence();
+}
+
+function showSentence() {
+  $("words").hidden = true;
+  const sentence = sentences[current];
+  const done = !sentence;
+  for (const id of ["play", "right", "wrong"]) {
+    $(id).disabled = done;
+  }
+  $("sentence").textContent = done ? "You have heard every test sentence. Thank you." : sentence.text;
+  $("sentence-count").textContent = done ? "" : `Sentence ${current + 1} of ${sentences.length}`;
+}
+
+$("play").addEventListener("click", async () => {
+  say("Loading the sentence.");
+  if (await play(await api(`/listening/sentences/${sentences[current].index}/audio`))) {
+    say("");
+  }
+});
+
+$("right").addEventListener("click", () => {
+  current += 1;
+  showSentence();
+  say(sentences[current] ? "Next sentence." : "That was the last sentence.");
+  $("sentence").setAttribute("tabindex", "-1");
+  $("sentence").focus();
+});
+
+$("wrong").addEventListener("click", () => {
+  const buttons = $("word-buttons");
+  buttons.replaceChildren();
+  const words = sentences[current].text.match(/[\p{L}\p{N}]+/gu) ?? [];
+  for (const word of words) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = word;
+    button.addEventListener("click", () => {
+      $("written").value = word;
+      $("say").value = "";
+      say(`Now type how ${word} should sound.`);
+      $("say").focus();
+    });
+    buttons.append(button, " ");
+  }
+  $("words").hidden = false;
+  buttons.querySelector("button")?.focus();
+});
+
+async function preview(text) {
+  await play(await api("/listening/preview", { method: "POST", body: JSON.stringify({ text }) }));
+}
+
+$("hear-say").addEventListener("click", () => {
+  const text = $("say").value.trim();
+  if (text.startsWith("/")) {
+    say("Phonemes cannot be played yet; type a respelling to hear it.");
+    return;
+  }
+  preview(text);
+});
+
+$("hear-fix").addEventListener("click", () => preview(fix.say));
 
 $("email-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -188,6 +273,7 @@ $("next").addEventListener("click", async () => {
   $("fix-written").textContent = fix.written;
   $("fix-say").textContent = fix.sayKind === "phonemes" ? `/${fix.say}/ (IPA)` : fix.say;
   $("fix-note").textContent = fix.note ?? "None";
+  $("hear-fix").hidden = fix.sayKind === "phonemes";
   $("comment").value = "";
   $("fix").hidden = false;
   say(`Suggestion for ${fix.written}.`);

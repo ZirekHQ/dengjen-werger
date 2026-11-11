@@ -6,6 +6,9 @@ button { font: inherit; margin-top: 0.75rem; padding: 0.4rem 0.9rem; }
 :focus-visible { outline: 3px solid #1a73e8; outline-offset: 2px; }
 dt { font-weight: 600; }
 dd { margin: 0 0 0.5rem 0; }
+#sentence { font-size: 1.25rem; }
+audio { width: 100%; }
+fieldset { margin-top: 0.75rem; }
 #status:empty { display: none; }
 #status { display: block; padding: 0.5rem; border: 2px solid currentColor; }
 .skip { position: absolute; left: -999px; }

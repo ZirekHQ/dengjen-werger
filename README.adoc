@@ -69,6 +69,12 @@ Postgres that matches the database defaults:
 |The Supabase project URL, such as `https://abcd.supabase.co`; tokens are checked against its published keys
 |`SUPABASE_PUBLISHABLE_KEY`
 |The project's publishable (anon) key, which the page uses to ask Supabase to sign someone in
+|`DENGJEN_GRPC_TARGET`
+|Where `dengjen-tts-grpc` listens, as `host:port`; defaults to `localhost:49314`. The server binds loopback only, so it runs beside Werger
+|`DENGJEN_VOICE_CONFIG`
+|The voice's `.onnx.json` path as the gRPC server sees it. Unset, the page shows the sentences but has no audio
+|`DENGJEN_GRPC_DEADLINE`
+|How long one synthesis call may take; defaults to `30s`
 |===
 
 ----

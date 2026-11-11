@@ -33,16 +33,19 @@ boundary yet — the SPA and Crowdin are the only other systems in play.
 ----
 src/main/java/werger/
 ├── domain/    records, enums, sealed WorkItemStatus — pure data + state machine, zero I/O
-├── ports/     TranslationSource, MachineTranslationSource, LexiconTarget, Result, SourceError, MtError
+├── ports/     TranslationSource, MachineTranslationSource, LexiconTarget, SpeechSynthesizer, Result,
+│              SourceError, MtError, SynthesisError
 │                                    — interfaces the domain depends on
 ├── adapters/
 │   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
 │   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
 │   ├── github/          GitHubClient, GitHubLexiconTarget, GitHubAppToken (RestClient) — implements LexiconTarget
+│   ├── dengjen/         DengjenGrpcSynthesizer, DengjenProto (gRPC to dengjen-tts-grpc) — implements SpeechSynthesizer
 │   └── db/              Db, DbConfig, *Repo (UserRepo, PronunciationFixRepo, ...) — HikariCP pool over pgjdbc
 ├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
-├── http/      HealthController, MeController, PronunciationFixController — HTTP entrypoints;
+│              ListeningService      — test sentences and their audio, cached once spoken
+├── http/      HealthController, MeController, PronunciationFixController, ListeningController — HTTP entrypoints;
 │              SupabaseAuth checks sign-in tokens, SignedInUser provisions the user
 ├── AppWiring                        — composition root: picks the concrete adapters for the services
 └── WergerApplication                — Spring Boot entrypoint
