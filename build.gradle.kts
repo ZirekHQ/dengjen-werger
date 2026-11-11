@@ -53,6 +53,7 @@ dependencies {
     implementation(platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES))
     implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.restclient)
+    implementation(libs.spring.boot.starter.security.oauth2.resource.server)
     implementation(libs.spring.jdbc)
     implementation(libs.hikaricp)
     runtimeOnly(libs.postgresql)
@@ -91,6 +92,7 @@ testing {
                 implementation(platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES))
                 implementation(libs.spring.boot.starter.test)
                 implementation(libs.spring.boot.starter.webmvc.test)
+                implementation(libs.spring.security.test)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }

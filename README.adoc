@@ -55,11 +55,26 @@ Prerequisites:
 * Nothing else — the Gradle wrapper (`./gradlew`) downloads the pinned
  Gradle version on first use
 
-Run the scaffold:
+Run the service. It needs the database settings and the Supabase project
+whose sign-in tokens it accepts; `docker compose up -d` starts a local
+Postgres that matches the database defaults:
+
+[cols="1,3"]
+|===
+|Variable |Meaning
+
+|`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+|Postgres connection; `DB_PORT` defaults to 6543, Supavisor's transaction pooler
+|`SUPABASE_URL`
+|The Supabase project URL, such as `https://abcd.supabase.co`; tokens are checked against its published keys
+|===
 
 ----
 ./gradlew bootRun
 ----
+
+The database is opened on first use, so `/healthz` answers even while it is
+unreachable. Every other route needs a Supabase sign-in token.
 
 Confirm it's serving:
 

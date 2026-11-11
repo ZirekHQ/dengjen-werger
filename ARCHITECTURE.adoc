@@ -40,10 +40,12 @@ src/main/java/werger/
 │   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
 │   ├── github/          GitHubClient, GitHubLexiconTarget, GitHubAppToken (RestClient) — implements LexiconTarget
-│   └── db/              Db, DbConfig                             — HikariCP pool over pgjdbc
+│   └── db/              Db, DbConfig, *Repo (UserRepo, PronunciationFixRepo, ...) — HikariCP pool over pgjdbc
 ├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
-├── http/      HealthController      — HTTP entrypoints, calls into domain/ports
-└── WergerApplication                — Spring Boot entrypoint and composition root
+├── http/      HealthController, MeController, PronunciationFixController — HTTP entrypoints;
+│              SupabaseAuth checks sign-in tokens, SignedInUser provisions the user
+├── AppWiring                        — composition root: picks the concrete adapters for the services
+└── WergerApplication                — Spring Boot entrypoint
 ----
 
 Dependency rule: `domain` never imports from `adapters` or `http`, and
