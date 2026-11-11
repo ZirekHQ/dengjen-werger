@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -38,12 +39,17 @@ public class GitHubClient {
     record Created(String sha) {}
 
     private final RestClient http;
-    private final String token;
+    private final Supplier<String> token;
     private final String owner;
     private final String repo;
 
     /** A client for {@code owner/repo} that signs every request with {@code token}. */
     public GitHubClient(RestClient http, String token, String owner, String repo) {
+        this(http, () -> token, owner, repo);
+    }
+
+    /** {@code token} is asked for on every call, so a short-lived one such as a GitHub App's can be renewed. */
+    public GitHubClient(RestClient http, Supplier<String> token, String owner, String repo) {
         this.http = http;
         this.token = token;
         this.owner = owner;
@@ -57,7 +63,7 @@ public class GitHubClient {
 
     /** Signs a request and asks for API version 2022-11-28 in the {@code accept} format. */
     private void headers(HttpHeaders headers, MediaType accept) {
-        headers.setBearerAuth(token);
+        headers.setBearerAuth(token.get());
         headers.setAccept(List.of(accept));
         headers.set("X-GitHub-Api-Version", "2022-11-28");
     }
