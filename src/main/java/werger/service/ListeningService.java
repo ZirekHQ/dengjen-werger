@@ -38,10 +38,19 @@ public class ListeningService {
      * The test sentences for a language, in order.
      *
      * @param language a language code, such as {@code kmr}
-     * @return the sentences, empty for a language without any
+     * @return the sentences, empty for a language without any; only languages that have sentences are kept, so
+     *     requests naming many unknown codes cannot grow the cache
      */
     public List<String> sentences(String language) {
-        return sentences.computeIfAbsent(language, ListeningService::load);
+        List<String> cached = sentences.get(language);
+        if (cached != null) {
+            return cached;
+        }
+        List<String> loaded = load(language);
+        if (!loaded.isEmpty()) {
+            sentences.putIfAbsent(language, loaded);
+        }
+        return loaded;
     }
 
     /**

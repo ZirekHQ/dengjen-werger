@@ -23,10 +23,17 @@ transaction pooler, port 6543")]
 OIDC token or shared secret"| Backend
     Auth["Supabase Auth
 Google / Apple / GitHub / email"] -.->|issues the JWT the backend verifies| Backend
+    Backend -->|"gRPC on loopback"| Engine["dengjen-tts-grpc
+speech engine, runs beside the backend"]
+    Backend -->|"GitHub App installation token"| GitHub["GitHub
+lexicon pull requests on ZirekHQ/dengjen"]
 ----
 
 One Spring Boot service holds all backend logic. There is no separate service
-boundary yet — the SPA and Crowdin are the only other systems in play.
+boundary yet. Besides the SPA and Crowdin, it calls the `dengjen-tts-grpc`
+speech engine for the listening page's audio (the engine listens on loopback
+only, so it runs in the same host or pod) and GitHub, as the Werger App, to
+propose approved pronunciation fixes to dengjen's lexicon.
 
 == Backend layering (ports &amp; adapters)
 

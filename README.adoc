@@ -75,7 +75,16 @@ Postgres that matches the database defaults:
 |The voice's `.onnx.json` path as the gRPC server sees it. Unset, the page shows the sentences but has no audio
 |`DENGJEN_GRPC_DEADLINE`
 |How long one synthesis call may take; defaults to `30s`
+|`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY`
+|The Werger GitHub App that opens lexicon pull requests on `ZirekHQ/dengjen`: its App ID, its installation ID on that repository, and the private key PEM as GitHub downloads it. Read once the jobs endpoint runs the publisher
 |===
+
+Supabase must sign tokens with its asymmetric JWT signing keys (ES256 or
+RS256, the default for new projects): Werger checks them against the
+project's published keys, and a project still on the legacy shared secret
+publishes none. In Auth's URL configuration, add the page's address, such as
+`https://werger.example.org/` and `http://localhost:8080/`, to the allowed
+redirect URLs.
 
 ----
 ./gradlew bootRun
@@ -83,8 +92,7 @@ Postgres that matches the database defaults:
 
 The database is opened on first use, so `/healthz` answers even while it is
 unreachable. Open `http://localhost:8080/` for the pronunciation page; every
-API route needs a Supabase sign-in token. In the Supabase dashboard, add the
-page's address to Auth's allowed redirect URLs so sign-in links return to it.
+API route needs a Supabase sign-in token.
 
 Confirm it's serving:
 

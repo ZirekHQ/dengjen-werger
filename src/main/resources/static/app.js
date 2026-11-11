@@ -139,24 +139,48 @@ async function showSignedIn() {
 }
 
 // Plays audio the API returns, or says why there is none.
-async function play(response) {
+// isStale says whether the page moved on while the audio loaded, so old audio is never played over a new sentence.
+async function play(response, isStale = () => false) {
   if (!response.ok) {
     say(`No audio: ${await problem(response)}.`);
     return false;
   }
+  const audio = await response.blob();
+  if (isStale()) {
+    return false;
+  }
   const player = $("player");
   URL.revokeObjectURL(player.src);
-  player.src = URL.createObjectURL(await response.blob());
-  await player.play();
+  player.src = URL.createObjectURL(audio);
+  try {
+    await player.play();
+  } catch {
+    say("The audio could not start; use the player's play button.");
+    return false;
+  }
   return true;
 }
 
 async function loadSentences() {
   const response = await api("/listening/sentences");
-  sentences = response.ok ? await response.json() : [];
+  if (!response.ok) {
+    sentences = [];
+    for (const id of ["play", "right", "wrong"]) {
+      $(id).disabled = true;
+    }
+    $("sentence-count").textContent = "";
+    $("sentence").textContent = "The test sentences could not be loaded.";
+    $("retry").hidden = false;
+    say(`Sentences not loaded: ${await problem(response)}.`);
+    return;
+  }
+  $("retry").hidden = true;
+  sentences = await response.json();
   current = 0;
   showSentence();
 }
+
+$("retry").addEventListener("click", loadSentences);
 
 function showSentence() {
   $("words").hidden = true;
@@ -170,8 +194,10 @@ function showSentence() {
 }
 
 $("play").addEventListener("click", async () => {
+  const playing = current;
   say("Loading the sentence.");
-  if (await play(await api(`/listening/sentences/${sentences[current].index}/audio`))) {
+  const response = await api(`/listening/sentences/${sentences[playing].index}/audio`);
+  if (await play(response, () => current !== playing)) {
     say("");
   }
 });

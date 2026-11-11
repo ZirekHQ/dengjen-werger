@@ -38,6 +38,11 @@ class ListeningServiceTest {
     }
 
     @Test
+    void theSentencesAreReadOnceAndKept() {
+        assertThat(listening.sentences("kmr")).isSameAs(listening.sentences("kmr"));
+    }
+
+    @Test
     void aSentenceIsSpokenOnceAndThenServedFromMemory() {
         Optional<Result<SynthesisError, Speech>> first = listening.sentenceAudio("kmr", 0);
         Optional<Result<SynthesisError, Speech>> second = listening.sentenceAudio("kmr", 0);
