@@ -1,0 +1,33 @@
+# Test sentences for the listening page, one per line. Taken from the Common Voice
+# Kurmanji sentences (CC0) in ZirekHQ/dengjen's crates/text/espeak-phonemizer/tests/kurmanji_corpus.txt.
+# Lines starting with # and blank lines are skipped.
+Çivîk hêlînên xwe li ser daran ava dikin.
+Çend navçeyên Wanê hene?
+Di demsala zivistanê de berf dibare.
+Dema ku hûn serdana xizmên xwe dikin, hûn çawa tev digerin?
+Dengê tembûra Aram Tîgran dê qet ji ber guhê me neçe.
+Em dixwazin bi te re bipeyivin.
+Ez li zanîngehê fêrî zimanê kurdî dibim.
+Ez ji bavê xwe pir hez dikim.
+Giyanê mirovan, bi ken xwe nû dike.
+Havînan roj dirêjtir in.
+Her tişt sererast e.
+Hormona însulînê rêjeya şekirê xwînê rêk dixe.
+Ji kerema xwe hesabê min sererast bike.
+Ji te re pirseke min heye.
+Li çavên min binihêre.
+Li mala min çar ode hene.
+Mamoste Goran kesekî jêhatî, serwext, jîr û zana bû.
+Min dolarek li ser rêyê dît.
+Min ji te re çendek gul berhev kirin.
+Paqijkirina diranan, me ji nexweşiyan diparêze.
+Pirtûka min li ser maseyê ye.
+Roj, heftî, meh, demsal û sal ji bo hêsankirina jiyanê ne.
+Sêv baş xuya dikin.
+Sînorê Kanadayê li ku derê ye?
+Trên li ser rêyan dimeşin.
+Tu îro pir kêfxweş xuya dikî.
+Wateya jiyanê çi ye?
+Zikê min tije ye.
+Li gorî standarda ISO ev tişt rast e.
+Ev bernameya UEFA ye.

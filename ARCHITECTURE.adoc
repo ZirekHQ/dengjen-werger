@@ -23,26 +23,36 @@ transaction pooler, port 6543")]
 OIDC token or shared secret"| Backend
     Auth["Supabase Auth
 Google / Apple / GitHub / email"] -.->|issues the JWT the backend verifies| Backend
+    Backend -->|"gRPC on loopback"| Engine["dengjen-tts-grpc
+speech engine, runs beside the backend"]
+    Backend -->|"GitHub App installation token"| GitHub["GitHub
+lexicon pull requests on ZirekHQ/dengjen"]
 ----
 
 One Spring Boot service holds all backend logic. There is no separate service
-boundary yet — the SPA and Crowdin are the only other systems in play.
+boundary yet. Besides the SPA and Crowdin, it calls the `dengjen-tts-grpc`
+speech engine for the listening page's audio (the engine listens on loopback
+only, so it runs in the same host or pod) and GitHub, as the Werger App, to
+propose approved pronunciation fixes to dengjen's lexicon.
 
 == Backend layering (ports &amp; adapters)
 
 ----
 src/main/java/werger/
 ├── domain/    records, enums, sealed WorkItemStatus — pure data + state machine, zero I/O
-├── ports/     TranslationSource, MachineTranslationSource, LexiconTarget, Result, SourceError, MtError
+├── ports/     TranslationSource, MachineTranslationSource, LexiconTarget, SpeechSynthesizer, Result,
+│              SourceError, MtError, SynthesisError
 │                                    — interfaces the domain depends on
 ├── adapters/
 │   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
 │   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
 │   ├── github/          GitHubClient, GitHubLexiconTarget, GitHubAppToken (RestClient) — implements LexiconTarget
+│   ├── dengjen/         DengjenGrpcSynthesizer, DengjenProto (gRPC to dengjen-tts-grpc) — implements SpeechSynthesizer
 │   └── db/              Db, DbConfig, *Repo (UserRepo, PronunciationFixRepo, ...) — HikariCP pool over pgjdbc
 ├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
-├── http/      HealthController, MeController, PronunciationFixController — HTTP entrypoints;
+│              ListeningService      — test sentences and their audio, cached once spoken
+├── http/      HealthController, MeController, PronunciationFixController, ListeningController — HTTP entrypoints;
 │              SupabaseAuth checks sign-in tokens, SignedInUser provisions the user
 ├── AppWiring                        — composition root: picks the concrete adapters for the services
 └── WergerApplication                — Spring Boot entrypoint

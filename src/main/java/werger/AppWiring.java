@@ -1,8 +1,12 @@
 package werger;
 
 import com.zaxxer.hikari.HikariDataSource;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -13,6 +17,9 @@ import werger.adapters.db.Db;
 import werger.adapters.db.DbConfig;
 import werger.adapters.db.PronunciationFixRepo;
 import werger.adapters.db.UserRepo;
+import werger.adapters.dengjen.DengjenGrpcSynthesizer;
+import werger.ports.SpeechSynthesizer;
+import werger.service.ListeningService;
 import werger.service.PronunciationFixService;
 
 /** The one place that picks concrete adapters for the services the HTTP layer calls. */
@@ -95,5 +102,44 @@ public class AppWiring {
     PronunciationFixService pronunciationFixService(
             PronunciationFixRepo fixes, TransactionTemplate transactions, Clock clock) {
         return new PronunciationFixService(fixes, transactions, clock);
+    }
+
+    /**
+     * The connection to the {@code dengjen-tts-grpc} server, which listens on loopback only, so it runs beside Werger.
+     * Nothing connects until the first call.
+     *
+     * @param target the server's {@code host:port}
+     * @return the channel, shut down by Spring on exit
+     */
+    @Bean(destroyMethod = "shutdownNow")
+    ManagedChannel dengjenChannel(@Value("${werger.speech.grpc-target}") String target) {
+        return ManagedChannelBuilder.forTarget(target).usePlaintext().build();
+    }
+
+    /**
+     * The voice volunteers are correcting.
+     *
+     * @param channel the connection to the engine
+     * @param voiceConfig the voice config path as the engine sees it; blank leaves speech unavailable
+     * @param deadline how long one call may take
+     * @return the synthesizer
+     */
+    @Bean
+    SpeechSynthesizer speechSynthesizer(
+            ManagedChannel channel,
+            @Value("${werger.speech.voice-config}") String voiceConfig,
+            @Value("${werger.speech.deadline}") Duration deadline) {
+        return new DengjenGrpcSynthesizer(channel, voiceConfig, deadline);
+    }
+
+    /**
+     * The test sentences and their audio.
+     *
+     * @param synthesizer the engine
+     * @return the service
+     */
+    @Bean
+    ListeningService listeningService(SpeechSynthesizer synthesizer) {
+        return new ListeningService(synthesizer);
     }
 }
