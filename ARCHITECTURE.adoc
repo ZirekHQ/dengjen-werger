@@ -33,7 +33,7 @@ boundary yet — the SPA and Crowdin are the only other systems in play.
 ----
 src/main/java/werger/
 ├── domain/    records, enums, sealed WorkItemStatus — pure data + state machine, zero I/O
-├── ports/     TranslationSource, MachineTranslationSource, Result, SourceError, MtError
+├── ports/     TranslationSource, MachineTranslationSource, LexiconTarget, Result, SourceError, MtError
 │                                    — interfaces the domain depends on
 ├── adapters/
 │   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
@@ -76,6 +76,13 @@ it's enforced by convention and PR review only.
  `JobsService` (the Crowdin sync job) and `ApprovalService` (points
  award) exist. See
  link:docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md[`docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md`].
+* *Approved pronunciation fixes reach dengjen through one pull request per
+ language* (`LexiconPublisher` against the `LexiconTarget` port, #110). Each
+ run starts from the lexicon on dengjen's default branch: a fix whose row is
+ already there becomes `landed`, an earlier fix for the same written form
+ becomes `superseded`, and the rest are proposed together. Werger keeps no
+ record of the pull request itself: merging it is what lands the fixes. The
+ GitHub adapter is not built yet.
 * *GraalVM native-image on Cloud Run* remains the target, chosen for
  cold-start latency given request-driven (not always-on) traffic. The
  build ships a JVM image today (see `Dockerfile`); a native build via

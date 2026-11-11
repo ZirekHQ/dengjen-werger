@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -90,6 +91,29 @@ public class PronunciationFixRepo {
                         update pronunciation_fixes set status = ?::pronunciation_fix_status
                         where id = ? and status = 'pending_review'
                         """, status.name().toLowerCase(Locale.ROOT), id) == 1;
+    }
+
+    /**
+     * Approved fixes in {@code language} not yet compared with the lexicon, in the order they were approved. The join
+     * on a second speaker's approving review means a fix can reach the lexicon only through one.
+     */
+    public List<PronunciationFix> approvedAwaitingLanding(String language) {
+        return jdbc.query("""
+                        select f.*
+                        from pronunciation_fixes f
+                        join pronunciation_fix_reviews r
+                          on r.fix_id = f.id and r.verdict = 'approved' and r.reviewer_id <> f.submitter_id
+                        where f.status = 'approved' and f.language_code = ?
+                        order by r.reviewed_at, f.id
+                        """, PronunciationFixRepo::toFix, language);
+    }
+
+    /** Moves an approved fix to {@code status}; a fix already settled stays as it is. */
+    public void settle(UUID id, PronunciationFixStatus status) {
+        jdbc.update("""
+                update pronunciation_fixes set status = ?::pronunciation_fix_status
+                where id = ? and status = 'approved'
+                """, status.name().toLowerCase(Locale.ROOT), id);
     }
 
     /** Throws if the reviewer suggested the fix: the {@code ..._reviewer_not_submitter} trigger is the backstop. */
