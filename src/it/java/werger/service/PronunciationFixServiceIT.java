@@ -76,6 +76,8 @@ class PronunciationFixServiceIT {
     @Test
     void nextForReviewServesTheOldestOtherSpeakersFix() {
         UUID submitter = db.newUser();
+        // The integration database is shared, so other speakers' pending fixes may exist. A fix dated at the epoch
+        // is older than any a real speaker submits, which keeps it first in the queue whatever else is there.
         PronunciationFix older = fixes.insert(new PronunciationFix(
                 UUID.randomUUID(),
                 "kmr",
@@ -83,10 +85,12 @@ class PronunciationFixServiceIT {
                 new PronunciationSay.Respelling("Silav"),
                 Optional.empty(),
                 submitter,
-                NOW.minusSeconds(60)));
+                Instant.EPOCH));
         submit(submitter, "Selav");
 
-        assertThat(service.nextForReview(submitter)).isEmpty();
+        assertThat(service.nextForReview(submitter))
+                .map(PronunciationFix::submitter)
+                .isNotEqualTo(Optional.of(submitter));
         assertThat(service.nextForReview(db.newUser())).contains(older);
     }
 

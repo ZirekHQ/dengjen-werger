@@ -68,7 +68,7 @@ public class PronunciationFixService {
         return Objects.requireNonNull(transactions.execute(status -> decide(status, review)));
     }
 
-    // The status-gated transition runs first so that of two racing reviewers only one reaches the review insert.
+    /** The status-gated transition runs first so that of two racing reviewers only one reaches the review insert. */
     private Result<ReviewError, Void> decide(TransactionStatus status, PronunciationFixReview review) {
         PronunciationFixStatus outcome = review.verdict() == ReviewVerdict.APPROVED
                 ? PronunciationFixStatus.APPROVED

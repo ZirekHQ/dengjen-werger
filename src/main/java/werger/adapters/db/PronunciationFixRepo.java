@@ -106,6 +106,7 @@ public class PronunciationFixRepo {
                 OffsetDateTime.ofInstant(review.reviewedAt(), ZoneOffset.UTC));
     }
 
+    /** Rebuilds the sealed suggestion from {@code say_kind}, which the schema limits to respelling or phonemes. */
     static PronunciationFix toFix(ResultSet row, int rowNum) throws SQLException {
         String say = row.getString("say");
         PronunciationSay parsed = "phonemes".equals(row.getString("say_kind"))
