@@ -43,7 +43,8 @@ public class LexiconPublisher {
      * landed, even when a later fix for the same written form is about to replace it; any other earlier fix is
      * superseded.
      */
-    private Result<SourceError, LexiconPublication> publishOnto(String language, String current) {
+    private Result<SourceError, LexiconPublication> publishOnto(String language, LexiconTarget.Snapshot snapshot) {
+        String current = snapshot.content();
         List<PronunciationFix> approved = fixes.approvedAwaitingLanding(language);
         // Approval order, so a later fix for the same written form replaces an earlier one.
         Map<String, PronunciationFix> latest = new LinkedHashMap<>();
@@ -64,7 +65,7 @@ public class LexiconPublisher {
             return Result.ok(new LexiconPublication.UpToDate());
         }
         List<UUID> ids = missing.stream().map(PronunciationFix::id).toList();
-        return target.propose(language, LexiconFile.apply(current, missing), description(missing))
+        return target.propose(language, snapshot, LexiconFile.apply(current, missing), description(missing))
                 .<Result<SourceError, LexiconPublication>>fold(
                         Result::err, pullRequest -> Result.ok(new LexiconPublication.Proposed(pullRequest, ids)));
     }

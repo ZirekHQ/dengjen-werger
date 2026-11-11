@@ -44,17 +44,19 @@ class LexiconPublisherTest {
     }
 
     private static final class StubTarget implements LexiconTarget {
-        Result<SourceError, String> current = Result.ok(LEXICON);
+        Result<SourceError, Snapshot> current = Result.ok(new Snapshot(LEXICON, "main-sha"));
         Result<SourceError, URI> proposal = Result.ok(PULL_REQUEST);
         final List<String> proposed = new ArrayList<>();
+        final List<Snapshot> bases = new ArrayList<>();
 
         @Override
-        public Result<SourceError, String> current(String language) {
+        public Result<SourceError, Snapshot> current(String language) {
             return current;
         }
 
         @Override
-        public Result<SourceError, URI> propose(String language, String content, String description) {
+        public Result<SourceError, URI> propose(String language, Snapshot base, String content, String description) {
+            bases.add(base);
             proposed.add(content);
             return proposal;
         }
@@ -76,6 +78,7 @@ class LexiconPublisherTest {
         assertThat(publisher.publish("kmr"))
                 .isEqualTo(Result.ok(new LexiconPublication.Proposed(PULL_REQUEST, List.of(fix.id()))));
         assertThat(target.proposed).containsExactly(LEXICON + "NY\tNeteweyên Yekbûyî\n");
+        assertThat(target.bases).containsExactly(new LexiconTarget.Snapshot(LEXICON, "main-sha"));
         assertThat(fixes.settled).isEmpty();
     }
 

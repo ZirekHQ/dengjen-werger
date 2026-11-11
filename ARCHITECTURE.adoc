@@ -83,9 +83,12 @@ it's enforced by convention and PR review only.
  already there becomes `landed`, an earlier fix for the same written form
  becomes `superseded`, and the rest are proposed together. Werger keeps no
  record of the pull request itself: merging it is what lands the fixes.
- `GitHubLexiconTarget` owns the branch `werger/lexicon-<language>` and resets
- it to the base for every change, so edits pushed to that branch by hand do
- not survive the next change. Nothing calls the publisher yet; the jobs
+ `GitHubLexiconTarget` owns the branch `werger/lexicon-<language>`. Each
+ change is one commit on top of the default-branch commit the run read, and
+ the branch moves straight to it: it never points at the base itself, which
+ would close the open pull request, and a change that reached the default
+ branch after the read survives the merge. Edits pushed to that branch by hand
+ do not survive the next change. Nothing calls the publisher yet; the jobs
  endpoint (task 18) will.
 * *GraalVM native-image on Cloud Run* remains the target, chosen for
  cold-start latency given request-driven (not always-on) traffic. The

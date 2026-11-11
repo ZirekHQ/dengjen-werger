@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,16 +29,20 @@ public class GitHubClient {
     record GitObject(String sha) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Content(String sha) {}
+    record Commit(GitObject tree) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Pull(long number, @JsonProperty("html_url") URI htmlUrl) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Created(String sha) {}
 
     private final RestClient http;
     private final String token;
     private final String owner;
     private final String repo;
 
+    /** A client for {@code owner/repo} that signs every request with {@code token}. */
     public GitHubClient(RestClient http, String token, String owner, String repo) {
         this.http = http;
         this.token = token;
@@ -67,15 +70,7 @@ public class GitHubClient {
         return body == null ? "" : new String(body, StandardCharsets.UTF_8);
     }
 
-    public String fileSha(String path, String ref) {
-        Content content = http.get()
-                .uri(at("contents/" + path).queryParam("ref", ref).build().toUri())
-                .headers(h -> headers(h, JSON))
-                .retrieve()
-                .body(Content.class);
-        return Objects.requireNonNull(content).sha();
-    }
-
+    /** The commit {@code branch} points at. */
     public String branchSha(String branch) {
         Ref ref = http.get()
                 .uri(at("git/ref/heads/" + branch).build().toUri())
@@ -98,17 +93,27 @@ public class GitHubClient {
         }
     }
 
-    public void putFile(String path, String branch, String content, String sha, String message) {
-        send(
-                HttpMethod.PUT,
-                at("contents/" + path).build().toUri(),
+    /**
+     * Creates a commit whose only parent is {@code parent} and whose tree is the parent's with {@code path} set to
+     * {@code content}, and returns its SHA. No branch moves until {@link #pointBranch} points one at it.
+     */
+    public String commitFile(String parent, String path, String content, String message) {
+        Commit commit = http.get()
+                .uri(at("git/commits/" + parent).build().toUri())
+                .headers(h -> headers(h, JSON))
+                .retrieve()
+                .body(Commit.class);
+        String tree = create(
+                "git/trees",
                 Map.of(
-                        "message", message,
-                        "content", Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)),
-                        "sha", sha,
-                        "branch", branch));
+                        "base_tree",
+                        Objects.requireNonNull(commit).tree().sha(),
+                        "tree",
+                        List.of(Map.of("path", path, "mode", "100644", "type", "blob", "content", content))));
+        return create("git/commits", Map.of("message", message, "tree", tree, "parents", List.of(parent)));
     }
 
+    /** The open pull request from {@code branch} in this repository, if there is one. */
     public Optional<Pull> openPull(String branch) {
         List<Pull> pulls = http.get()
                 .uri(at("pulls")
@@ -122,6 +127,7 @@ public class GitHubClient {
         return pulls == null ? Optional.empty() : pulls.stream().findFirst();
     }
 
+    /** Opens a pull request from {@code branch} into {@code base}. */
     public Pull createPull(String title, String branch, String base, String body) {
         Pull pull = http.post()
                 .uri(at("pulls").build().toUri())
@@ -133,8 +139,20 @@ public class GitHubClient {
         return Objects.requireNonNull(pull);
     }
 
+    /** Replaces the description of pull request {@code number}. */
     public void updatePullBody(long number, String body) {
         send(HttpMethod.PATCH, at("pulls/" + number).build().toUri(), Map.of("body", body));
+    }
+
+    private String create(String path, Map<String, Object> body) {
+        Created created = http.post()
+                .uri(at(path).build().toUri())
+                .headers(h -> headers(h, JSON))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(Created.class);
+        return Objects.requireNonNull(created).sha();
     }
 
     private void send(HttpMethod method, URI uri, Map<String, Object> body) {
