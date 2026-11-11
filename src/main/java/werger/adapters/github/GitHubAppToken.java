@@ -62,7 +62,7 @@ public class GitHubAppToken implements Supplier<String> {
     public synchronized String get() {
         Instant now = clock.instant();
         Cached current = cached.filter(token -> token.expiresAt().isAfter(now.plus(RENEW_BEFORE_EXPIRY)))
-                .orElseGet(() -> renew(now));
+                .orElseGet(this::renew);
         cached = Optional.of(current);
         return current.token();
     }
@@ -71,11 +71,13 @@ public class GitHubAppToken implements Supplier<String> {
      * Renewing early leaves room to fail: while GitHub cannot mint a new token, the old one is used for as long as one
      * request can still finish with it.
      */
-    private Cached renew(Instant now) {
+    private Cached renew() {
         try {
             return mint();
         } catch (RestClientException e) {
-            return cached.filter(token -> token.expiresAt().isAfter(now.plus(LAST_USABLE_BEFORE_EXPIRY)))
+            // Read the clock again: the failed call itself may have taken long enough to use up the old token.
+            Instant failedAt = clock.instant();
+            return cached.filter(token -> token.expiresAt().isAfter(failedAt.plus(LAST_USABLE_BEFORE_EXPIRY)))
                     .orElseThrow(() -> e);
         }
     }

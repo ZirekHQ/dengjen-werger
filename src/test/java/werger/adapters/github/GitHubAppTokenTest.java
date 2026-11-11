@@ -165,4 +165,21 @@ class GitHubAppTokenTest {
         assertThatThrownBy(token::get).isInstanceOf(RestClientException.class);
         server.verify();
     }
+
+    @Test
+    void aRenewalThatFailsSlowlyDoesNotFallBackToATokenUsedUpMeanwhile() {
+        GitHubAppToken token = token();
+        expectToken("first", NOW.plus(Duration.ofHours(1)));
+        assertThat(token.get()).isEqualTo("first");
+        server.verify();
+
+        server.reset();
+        clock.now = NOW.plus(Duration.ofMinutes(57));
+        server.expect(once(), requestTo(TOKENS)).andRespond(request -> {
+            clock.now = NOW.plus(Duration.ofMinutes(59).plusSeconds(30));
+            return withServerError().createResponse(request);
+        });
+        assertThatThrownBy(token::get).isInstanceOf(RestClientException.class);
+        server.verify();
+    }
 }
