@@ -39,6 +39,7 @@ src/main/java/werger/
 │   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
 │   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
+│   ├── github/          GitHubClient, GitHubLexiconTarget (RestClient) — implements LexiconTarget
 │   └── db/              Db, DbConfig                             — HikariCP pool over pgjdbc
 ├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
 ├── http/      HealthController      — HTTP entrypoints, calls into domain/ports
@@ -81,8 +82,11 @@ it's enforced by convention and PR review only.
  run starts from the lexicon on dengjen's default branch: a fix whose row is
  already there becomes `landed`, an earlier fix for the same written form
  becomes `superseded`, and the rest are proposed together. Werger keeps no
- record of the pull request itself: merging it is what lands the fixes. The
- GitHub adapter is not built yet.
+ record of the pull request itself: merging it is what lands the fixes.
+ `GitHubLexiconTarget` owns the branch `werger/lexicon-<language>` and resets
+ it to the base for every change, so edits pushed to that branch by hand do
+ not survive the next change. Nothing calls the publisher yet; the jobs
+ endpoint (task 18) will.
 * *GraalVM native-image on Cloud Run* remains the target, chosen for
  cold-start latency given request-driven (not always-on) traffic. The
  build ships a JVM image today (see `Dockerfile`); a native build via
