@@ -12,7 +12,7 @@ import werger.ports.Result;
 
 class LexiconRowTest {
     private static PronunciationFix fix(String written, PronunciationSay say, Optional<String> note) {
-        return new PronunciationFix(UUID.randomUUID(), written, say, note, UUID.randomUUID(), Instant.EPOCH);
+        return new PronunciationFix(UUID.randomUUID(), "kmr", written, say, note, UUID.randomUUID(), Instant.EPOCH);
     }
 
     @Test
