@@ -230,6 +230,16 @@ class GitHubLexiconTargetTest {
         assertThat(target.current("kmr"))
                 .isInstanceOfSatisfying(
                         Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
+
+        server.reset();
+        server.expect(requestTo(REPO + "git/ref/heads/main"))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"message":"You have exceeded a secondary rate limit. Please wait a few minutes."}"""));
+        assertThat(target.current("kmr"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
     }
 
     @Test

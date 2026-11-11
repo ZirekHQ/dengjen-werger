@@ -1,6 +1,7 @@
 package werger.adapters.github;
 
 import java.net.URI;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -98,9 +99,15 @@ public class GitHubLexiconTarget implements LexiconTarget {
                 : new SourceError.Transient("GitHub returned " + e.getStatusCode());
     }
 
-    /** GitHub answers a spent rate limit with 403 as well as 429, and marks it only in these headers. */
+    /**
+     * GitHub answers a spent rate limit with 403 as well as 429. A primary limit shows in the headers; a secondary one
+     * can come with neither header, and then only its message says so. Erring towards transient costs one retry, while
+     * a wrong refusal would stop publishing.
+     */
     private static boolean rateLimited(RestClientResponseException e) {
         HttpHeaders headers = Optional.ofNullable(e.getResponseHeaders()).orElseGet(HttpHeaders::new);
-        return "0".equals(headers.getFirst("X-RateLimit-Remaining")) || headers.containsHeader(HttpHeaders.RETRY_AFTER);
+        return "0".equals(headers.getFirst("X-RateLimit-Remaining"))
+                || headers.containsHeader(HttpHeaders.RETRY_AFTER)
+                || e.getResponseBodyAsString().toLowerCase(Locale.ROOT).contains("rate limit");
     }
 }
