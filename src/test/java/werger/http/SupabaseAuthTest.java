@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.nimbusds.jose.JOSEException;
@@ -66,6 +67,17 @@ class SupabaseAuthTest {
     @Test
     void theHealthCheckNeedsNoToken() throws Exception {
         mvc.perform(get("/healthz")).andExpect(status().isOk());
+    }
+
+    @Test
+    void thePageAndItsSignInSettingsNeedNoToken() throws Exception {
+        mvc.perform(get("/")).andExpect(status().isOk());
+        mvc.perform(get("/app.js")).andExpect(status().isOk());
+        mvc.perform(get("/app.css")).andExpect(status().isOk());
+        mvc.perform(get("/page-config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supabaseUrl").value("https://test-project.supabase.co"))
+                .andExpect(jsonPath("$.publishableKey").value("test-publishable-key"));
     }
 
     @Test

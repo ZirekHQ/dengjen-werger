@@ -28,8 +28,13 @@ public class SupabaseAuth {
     /** The audience Supabase puts on a signed-in user's token; anonymous and service tokens carry other roles. */
     static final String AUDIENCE = "authenticated";
 
+    /** Paths served without a token. */
+    private static final String[] PUBLIC_PATHS = {"/healthz", "/", "/index.html", "/app.js", "/app.css", "/page-config"
+    };
+
     /**
-     * Every route needs a valid token except the health check, which the platform probes without one.
+     * Every route needs a valid token except the health check, which the platform probes without one, and the page
+     * itself with its sign-in settings, which a visitor loads before signing in.
      *
      * @param http the security builder Spring passes in
      * @return the filter chain
@@ -37,7 +42,7 @@ public class SupabaseAuth {
      */
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http.authorizeHttpRequests(requests -> requests.requestMatchers("/healthz")
+        return http.authorizeHttpRequests(requests -> requests.requestMatchers(PUBLIC_PATHS)
                         .permitAll()
                         .anyRequest()
                         .authenticated())

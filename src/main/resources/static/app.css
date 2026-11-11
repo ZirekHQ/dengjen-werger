@@ -1,0 +1,12 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.5; }
+body { max-width: 40rem; margin: 0 auto; padding: 1rem; }
+label { display: block; margin-top: 0.75rem; font-weight: 600; }
+input, textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 0.4rem; }
+button { font: inherit; margin-top: 0.75rem; padding: 0.4rem 0.9rem; }
+:focus-visible { outline: 3px solid #1a73e8; outline-offset: 2px; }
+dt { font-weight: 600; }
+dd { margin: 0 0 0.5rem 0; }
+#status:empty { display: none; }
+#status { padding: 0.5rem; border: 2px solid currentColor; }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 1rem; }
