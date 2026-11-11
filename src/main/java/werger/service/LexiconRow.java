@@ -3,6 +3,7 @@ package werger.service;
 import java.text.Normalizer;
 import java.util.Optional;
 import java.util.function.IntPredicate;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import werger.domain.PronunciationFix;
 import werger.domain.PronunciationSay;
@@ -15,10 +16,15 @@ import werger.ports.Result;
  * parser, which the lexicon pull request's CI runs: copying it here would drift whenever the voice's set changes.
  */
 public final class LexiconRow {
+    private static final Pattern SPACES = Pattern.compile("[\\s\\p{Z}\\p{Cc}]+");
     private static final String RESPELLING_LETTERS = "abcdefghijklmnopqrstuvwxyzîêûçşöü";
 
     private LexiconRow() {}
 
+    /**
+     * Checks the {@code written} column: one word of letters, trimmed and composed to NFC. The case is kept, because a
+     * capitalised entry matches only that spelling.
+     */
     public static Result<LexiconRowError, String> parseWritten(String raw) {
         String written = nfc(raw).strip();
         if (written.isEmpty()) {
@@ -30,6 +36,10 @@ public final class LexiconRow {
         return Result.ok(written);
     }
 
+    /**
+     * Checks the {@code say} column: phonemes between two slashes, or otherwise a respelling in Kurmanji letters,
+     * spaces, hyphens and apostrophes. Runs of whitespace collapse to one space.
+     */
     public static Result<LexiconRowError, PronunciationSay> parseSay(String raw) {
         String say = nfc(raw).strip();
         if (say.isEmpty()) {
@@ -89,8 +99,9 @@ public final class LexiconRow {
         return c == ' ' || c == '-' || c == '\'' || RESPELLING_LETTERS.indexOf(Character.toLowerCase(c)) >= 0;
     }
 
+    // Includes Unicode separators and controls (U+0085, U+2028, U+2029), so no line break of any kind reaches the file.
     private static String collapseSpaces(String text) {
-        return text.strip().replaceAll("\\s+", " ");
+        return SPACES.matcher(text.strip()).replaceAll(" ");
     }
 
     private static String nfc(String text) {

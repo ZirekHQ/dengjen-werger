@@ -87,4 +87,13 @@ class LexiconRowTest {
                         Optional.of(" the\tEuropean\nUnion "))))
                 .isEqualTo("AB\tYekîtiya Ewropayê\tthe European Union");
     }
+
+    @Test
+    void aNoteCannotBreakTheRowWithAUnicodeLineSeparator() {
+        assertThat(LexiconRow.render(fix(
+                        "AB",
+                        new PronunciationSay.Respelling("Yekîtiya Ewropayê"),
+                        Optional.of("a\u2028b\u0085c\u2029d"))))
+                .isEqualTo("AB\tYekîtiya Ewropayê\ta b c d");
+    }
 }
