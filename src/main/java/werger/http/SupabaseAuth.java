@@ -87,12 +87,27 @@ public class SupabaseAuth {
      * @throws IllegalArgumentException if the URL is blank or not an absolute https URL
      */
     static String issuer(String projectUrl) {
-        String trimmed = projectUrl.strip().replaceAll("/+$", "");
+        String trimmed = projectUrl(projectUrl);
         URI uri = URI.create(trimmed);
         if (!"https".equals(uri.getScheme()) || uri.getHost() == null) {
             throw new IllegalArgumentException("werger.auth.supabase-url must be an https URL, got: " + projectUrl);
         }
         return trimmed + "/auth/v1";
+    }
+
+    /**
+     * The project URL without surrounding spaces or trailing slashes, so paths can be appended to it.
+     *
+     * @param projectUrl the configured Supabase project URL
+     * @return the URL as the issuer and the page expect it
+     */
+    static String projectUrl(String projectUrl) {
+        String trimmed = projectUrl.strip();
+        int end = trimmed.length();
+        while (end > 0 && trimmed.charAt(end - 1) == '/') {
+            end--;
+        }
+        return trimmed.substring(0, end);
     }
 
     /**

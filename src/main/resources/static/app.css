@@ -7,6 +7,6 @@ button { font: inherit; margin-top: 0.75rem; padding: 0.4rem 0.9rem; }
 dt { font-weight: 600; }
 dd { margin: 0 0 0.5rem 0; }
 #status:empty { display: none; }
-#status { padding: 0.5rem; border: 2px solid currentColor; }
+#status { display: block; padding: 0.5rem; border: 2px solid currentColor; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: 1rem; top: 1rem; }

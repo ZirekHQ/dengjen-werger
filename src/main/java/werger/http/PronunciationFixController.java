@@ -129,10 +129,10 @@ public class PronunciationFixController {
      */
     private static ResponseEntity<Object> refused(ReviewError error) {
         return switch (error) {
-            case ReviewError.OwnSubmission own ->
+            case ReviewError.OwnSubmission _ ->
                 ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(new Problem("own-submission", "nobody reviews their own suggestion"));
-            case ReviewError.AlreadyDecided decided ->
+            case ReviewError.AlreadyDecided _ ->
                 ResponseEntity.status(HttpStatus.CONFLICT)
                         .body(new Problem("already-decided", "another reviewer decided this suggestion first"));
         };
@@ -146,13 +146,13 @@ public class PronunciationFixController {
      */
     static Problem problem(LexiconRowError error) {
         return switch (error) {
-            case LexiconRowError.EmptyWritten e -> new Problem("empty-written", "type the word as it is written");
+            case LexiconRowError.EmptyWritten _ -> new Problem("empty-written", "type the word as it is written");
             case LexiconRowError.NotOneWord(String written) ->
                 new Problem("not-one-word", "\"" + written + "\" must be a single word of letters only");
-            case LexiconRowError.EmptySay e -> new Problem("empty-say", "type how the word should sound");
-            case LexiconRowError.UnclosedPhonemes e ->
+            case LexiconRowError.EmptySay _ -> new Problem("empty-say", "type how the word should sound");
+            case LexiconRowError.UnclosedPhonemes _ ->
                 new Problem("unclosed-phonemes", "phonemes need a slash at both ends");
-            case LexiconRowError.EmptyPhonemes e -> new Problem("empty-phonemes", "type phonemes between the slashes");
+            case LexiconRowError.EmptyPhonemes _ -> new Problem("empty-phonemes", "type phonemes between the slashes");
             case LexiconRowError.ForbiddenCharacters(String characters) ->
                 new Problem("forbidden-characters", "remove these characters: " + characters);
         };
@@ -166,8 +166,8 @@ public class PronunciationFixController {
      */
     static FixView view(PronunciationFix fix) {
         String kind = switch (fix.say()) {
-            case PronunciationSay.Respelling r -> "respelling";
-            case PronunciationSay.Phonemes p -> "phonemes";
+            case PronunciationSay.Respelling _ -> "respelling";
+            case PronunciationSay.Phonemes _ -> "phonemes";
         };
         String say = switch (fix.say()) {
             case PronunciationSay.Respelling(String words) -> words;

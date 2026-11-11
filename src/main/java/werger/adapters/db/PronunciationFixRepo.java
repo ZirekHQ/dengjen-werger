@@ -24,8 +24,8 @@ public class PronunciationFixRepo {
     /** New fixes always wait for review. */
     public PronunciationFix insert(PronunciationFix fix) {
         String kind = switch (fix.say()) {
-            case PronunciationSay.Respelling r -> "respelling";
-            case PronunciationSay.Phonemes p -> "phonemes";
+            case PronunciationSay.Respelling _ -> "respelling";
+            case PronunciationSay.Phonemes _ -> "phonemes";
         };
         String say = switch (fix.say()) {
             case PronunciationSay.Respelling(String words) -> words;

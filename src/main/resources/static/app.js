@@ -16,12 +16,25 @@ function saved() {
   }
 }
 
+// Tokens are JWTs or opaque base64url strings; anything else is not a session from Supabase and is never stored.
+const TOKEN = /^[\w-]+(?:\.[\w-]+){0,2}$/;
+
+function token(value) {
+  if (typeof value !== "string" || value.length > 8192 || !TOKEN.test(value)) {
+    throw new Error("not a Supabase session");
+  }
+  return value;
+}
+
 function save(session) {
-  const expiresAt = Date.now() + Number(session.expires_in) * 1000;
+  const lifetime = Number.parseInt(session.expires_in, 10);
+  if (!Number.isSafeInteger(lifetime) || lifetime <= 0) {
+    throw new Error("not a Supabase session");
+  }
   localStorage.setItem(STORE, JSON.stringify({
-    accessToken: session.access_token,
-    refreshToken: session.refresh_token,
-    expiresAt,
+    accessToken: token(session.access_token),
+    refreshToken: token(session.refresh_token),
+    expiresAt: Date.now() + lifetime * 1000,
   }));
 }
 
@@ -29,7 +42,11 @@ function save(session) {
 function takeSessionFromUrl() {
   const fragment = new URLSearchParams(location.hash.slice(1));
   if (fragment.get("access_token")) {
-    save(Object.fromEntries(fragment));
+    try {
+      save(Object.fromEntries(fragment));
+    } catch {
+      say("Sign-in failed: the link did not carry a valid session.");
+    }
     history.replaceState(null, "", location.pathname);
   } else if (fragment.get("error_description")) {
     say(`Sign-in failed: ${fragment.get("error_description")}`);

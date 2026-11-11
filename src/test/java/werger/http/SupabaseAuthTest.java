@@ -86,6 +86,12 @@ class SupabaseAuthTest {
     }
 
     @Test
+    void everyTrailingSlashIsDropped() {
+        assertThat(SupabaseAuth.projectUrl("https://abcd.supabase.co///")).isEqualTo("https://abcd.supabase.co");
+        assertThat(SupabaseAuth.projectUrl("///")).isEmpty();
+    }
+
+    @Test
     void aProjectUrlThatIsNotHttpsIsRefused() {
         assertThatThrownBy(() -> SupabaseAuth.issuer("http://abcd.supabase.co"))
                 .isInstanceOf(IllegalArgumentException.class);

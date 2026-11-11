@@ -24,7 +24,7 @@ public class PageConfigController {
     public PageConfigController(
             @Value("${werger.auth.supabase-url}") String supabaseUrl,
             @Value("${werger.auth.supabase-publishable-key}") String publishableKey) {
-        this.config = new PageConfig(supabaseUrl.strip().replaceAll("/+$", ""), publishableKey);
+        this.config = new PageConfig(SupabaseAuth.projectUrl(supabaseUrl), publishableKey);
     }
 
     /**
