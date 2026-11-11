@@ -32,26 +32,34 @@ public class LexiconPublisher {
         this.transactions = transactions;
     }
 
+    /** Compares the approved fixes in {@code language} with the lexicon, settles those it can, proposes the rest. */
     public Result<SourceError, LexiconPublication> publish(String language) {
         return target.current(language)
                 .<Result<SourceError, LexiconPublication>>fold(Result::err, current -> publishOnto(language, current));
     }
 
+    /**
+     * Only the latest approval for each written form is proposed. A fix whose row is already in the lexicon has
+     * landed, even when a later fix for the same written form is about to replace it; any other earlier fix is
+     * superseded.
+     */
     private Result<SourceError, LexiconPublication> publishOnto(String language, String current) {
         List<PronunciationFix> approved = fixes.approvedAwaitingLanding(language);
         // Approval order, so a later fix for the same written form replaces an earlier one.
         Map<String, PronunciationFix> latest = new LinkedHashMap<>();
         approved.forEach(fix -> latest.put(fix.written(), fix));
-        List<PronunciationFix> superseded = approved.stream()
-                .filter(fix -> !latest.get(fix.written()).id().equals(fix.id()))
-                .toList();
         Map<Boolean, List<PronunciationFix>> inLexicon =
-                latest.values().stream().collect(Collectors.partitioningBy(fix -> LexiconFile.contains(current, fix)));
+                approved.stream().collect(Collectors.partitioningBy(fix -> LexiconFile.contains(current, fix)));
+        List<PronunciationFix> missing = latest.values().stream()
+                .filter(fix -> !inLexicon.get(true).contains(fix))
+                .toList();
+        List<PronunciationFix> superseded = inLexicon.get(false).stream()
+                .filter(fix -> !missing.contains(fix))
+                .toList();
         transactions.executeWithoutResult(status -> {
             superseded.forEach(fix -> fixes.settle(fix.id(), PronunciationFixStatus.SUPERSEDED));
             inLexicon.get(true).forEach(fix -> fixes.settle(fix.id(), PronunciationFixStatus.LANDED));
         });
-        List<PronunciationFix> missing = inLexicon.get(false);
         if (missing.isEmpty()) {
             return Result.ok(new LexiconPublication.UpToDate());
         }

@@ -102,6 +102,32 @@ class LexiconPublisherTest {
     }
 
     @Test
+    void anEarlierFixAlreadyInTheLexiconLandsWhenALaterOneReplacesIt() {
+        PronunciationFix earlier = respelling("AB", "Yekîtiya Ewropayê");
+        PronunciationFix later = respelling("AB", "Ewropa");
+        fixes.approved.addAll(List.of(earlier, later));
+
+        assertThat(publisher.publish("kmr"))
+                .isEqualTo(Result.ok(new LexiconPublication.Proposed(PULL_REQUEST, List.of(later.id()))));
+        assertThat(fixes.settled).containsExactly(Map.entry(earlier.id(), PronunciationFixStatus.LANDED));
+        assertThat(target.proposed).containsExactly("written\tsay\tnote\nAB\tEwropa\n");
+    }
+
+    @Test
+    void anEarlierFixNeverOverwritesALaterOneThatAlreadyLanded() {
+        PronunciationFix earlier = respelling("AB", "Ewropa");
+        PronunciationFix later = respelling("AB", "Yekîtiya Ewropayê");
+        fixes.approved.addAll(List.of(earlier, later));
+
+        assertThat(publisher.publish("kmr")).isEqualTo(Result.ok(new LexiconPublication.UpToDate()));
+        assertThat(fixes.settled)
+                .containsExactly(
+                        Map.entry(earlier.id(), PronunciationFixStatus.SUPERSEDED),
+                        Map.entry(later.id(), PronunciationFixStatus.LANDED));
+        assertThat(target.proposed).isEmpty();
+    }
+
+    @Test
     void anUnreadableLexiconSettlesAndProposesNothing() {
         fixes.approved.add(respelling("AB", "Yekîtiya Ewropayê"));
         target.current = Result.err(new SourceError.Transient("GitHub is down"));
