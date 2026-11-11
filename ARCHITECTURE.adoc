@@ -39,7 +39,7 @@ src/main/java/werger/
 │   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
 │   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
-│   ├── github/          GitHubClient, GitHubLexiconTarget (RestClient) — implements LexiconTarget
+│   ├── github/          GitHubClient, GitHubLexiconTarget, GitHubAppToken (RestClient) — implements LexiconTarget
 │   └── db/              Db, DbConfig                             — HikariCP pool over pgjdbc
 ├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
 ├── http/      HealthController      — HTTP entrypoints, calls into domain/ports
