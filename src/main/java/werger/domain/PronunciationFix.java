@@ -9,4 +9,10 @@ import java.util.UUID;
  * row of the lexicon file in dengjen.
  */
 public record PronunciationFix(
-        UUID id, String written, PronunciationSay say, Optional<String> note, UUID submitter, Instant submittedAt) {}
+        UUID id,
+        String language,
+        String written,
+        PronunciationSay say,
+        Optional<String> note,
+        UUID submitter,
+        Instant submittedAt) {}
