@@ -38,19 +38,24 @@ function save(session) {
   }));
 }
 
-// A magic link or Google sign-in returns the session in the URL fragment.
-function takeSessionFromUrl() {
+// A magic link or Google sign-in returns the session in the URL fragment. Anyone can craft a fragment, so the page
+// stores nothing from it: it trades the refresh token for a session Supabase itself issues, and stores that.
+async function takeSessionFromUrl() {
   const fragment = new URLSearchParams(location.hash.slice(1));
-  if (fragment.get("access_token")) {
-    try {
-      save(Object.fromEntries(fragment));
-    } catch {
-      say("Sign-in failed: the link did not carry a valid session.");
-    }
-    history.replaceState(null, "", location.pathname);
-  } else if (fragment.get("error_description")) {
-    say(`Sign-in failed: ${fragment.get("error_description")}`);
-    history.replaceState(null, "", location.pathname);
+  const refreshToken = fragment.get("refresh_token");
+  const failure = fragment.get("error_description");
+  if (!refreshToken && !failure) {
+    return;
+  }
+  history.replaceState(null, "", location.pathname);
+  if (failure) {
+    say(`Sign-in failed: ${failure}`);
+    return;
+  }
+  try {
+    save(await auth("token?grant_type=refresh_token", { refresh_token: refreshToken }));
+  } catch {
+    say("Sign-in failed: the link did not carry a valid session.");
   }
 }
 
@@ -204,7 +209,7 @@ $("approve").addEventListener("click", () => decide("APPROVED"));
 $("reject").addEventListener("click", () => decide("REJECTED"));
 
 config = await (await fetch("/page-config")).json();
-takeSessionFromUrl();
+await takeSessionFromUrl();
 if (saved()) {
   await showSignedIn();
 } else {
