@@ -63,8 +63,12 @@ public class GitHubLexiconTarget implements LexiconTarget {
         String path = path(language);
         String branch = branch(language);
         Optional<GitHubClient.Pull> open = github.openPull(branch);
-        // An unchanged file needs no commit, which would only start dengjen's CI again.
-        if (open.isEmpty() || !github.rawFile(path, branch).equals(content)) {
+        // An unchanged file needs no commit, which would only start dengjen's CI again. It counts as unchanged only on
+        // the same parent: on an older one, a merge could keep a base row that this content replaces.
+        boolean upToDate = open.isPresent()
+                && github.parentOf(open.get().head().sha()).equals(Optional.of(snapshot.revision()))
+                && github.rawFile(path, branch).equals(content);
+        if (!upToDate) {
             // Never point the branch at the base itself: GitHub closes an open pull request that has no commits left.
             github.pointBranch(branch, github.commitFile(snapshot.revision(), path, content, title(language)));
         }

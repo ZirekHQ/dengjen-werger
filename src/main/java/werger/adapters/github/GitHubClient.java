@@ -29,10 +29,10 @@ public class GitHubClient {
     record GitObject(String sha) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Commit(GitObject tree) {}
+    record Commit(GitObject tree, List<GitObject> parents) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Pull(long number, @JsonProperty("html_url") URI htmlUrl) {}
+    record Pull(long number, @JsonProperty("html_url") URI htmlUrl, GitObject head) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Created(String sha) {}
@@ -100,19 +100,20 @@ public class GitHubClient {
      * {@code content}, and returns its SHA. No branch moves until {@link #pointBranch} points one at it.
      */
     public String commitFile(String parent, String path, String content, String message) {
-        Commit commit = http.get()
-                .uri(at("git/commits/" + parent).build().toUri())
-                .headers(h -> headers(h, JSON))
-                .retrieve()
-                .body(Commit.class);
+        Commit commit = commit(parent);
         String tree = create(
                 "git/trees",
                 Map.of(
                         "base_tree",
-                        Objects.requireNonNull(commit).tree().sha(),
+                        commit.tree().sha(),
                         "tree",
                         List.of(Map.of("path", path, "mode", "100644", "type", "blob", "content", content))));
         return create("git/commits", Map.of("message", message, "tree", tree, "parents", List.of(parent)));
+    }
+
+    /** The first parent of commit {@code sha}, or empty for a root commit. */
+    public Optional<String> parentOf(String sha) {
+        return commit(sha).parents().stream().findFirst().map(GitObject::sha);
     }
 
     /** The open pull request from {@code branch} in this repository, if there is one. */
@@ -147,6 +148,16 @@ public class GitHubClient {
      */
     public void updatePull(long number, String base, String body) {
         send(HttpMethod.PATCH, at("pulls/" + number).build().toUri(), Map.of("base", base, "body", body));
+    }
+
+    /** Reads commit {@code sha}. */
+    private Commit commit(String sha) {
+        Commit commit = http.get()
+                .uri(at("git/commits/" + sha).build().toUri())
+                .headers(h -> headers(h, JSON))
+                .retrieve()
+                .body(Commit.class);
+        return Objects.requireNonNull(commit);
     }
 
     /** POSTs {@code body} to {@code path} and returns the SHA of the Git object GitHub created. */

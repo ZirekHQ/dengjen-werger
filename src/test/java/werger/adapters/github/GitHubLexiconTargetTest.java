@@ -28,7 +28,7 @@ class GitHubLexiconTargetTest {
     private static final String BRANCH = "werger/lexicon-kmr";
     private static final String LEXICON = "written\tsay\tnote\nAB\tYekîtiya Ewropayê\n";
     private static final String PULL = """
-            [{"number":7,"html_url":"https://github.com/ZirekHQ/dengjen/pull/7","state":"open"}]""";
+            [{"number":7,"html_url":"https://github.com/ZirekHQ/dengjen/pull/7","state":"open","head":{"sha":"old-proposal"}}]""";
 
     private static final LexiconTarget.Snapshot SNAPSHOT = new LexiconTarget.Snapshot(LEXICON, "main-sha");
 
@@ -43,6 +43,14 @@ class GitHubLexiconTargetTest {
         server.expect(requestTo(REPO + "pulls?head=ZirekHQ:" + BRANCH + "&state=open"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+    }
+
+    /** The open pull request's head commit sits on {@code parent}. */
+    private void expectProposalParent(String parent) {
+        server.expect(requestTo(REPO + "git/commits/old-proposal"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"sha":"old-proposal","tree":{"sha":"old-tree"},"parents":[{"sha":"%s"}]}""".formatted(parent), MediaType.APPLICATION_JSON));
     }
 
     /** GitHub serves {@code content} as the lexicon at {@code ref}. */
@@ -145,6 +153,7 @@ class GitHubLexiconTargetTest {
     @Test
     void anOpenPullRequestWithTheSameFileOnlyGetsTheNewDescriptionAndIsKeptOnTheBase() {
         expectOpenPulls(PULL);
+        expectProposalParent("main-sha");
         expectRawFile(BRANCH, LEXICON);
         server.expect(requestTo(REPO + "pulls/7"))
                 .andExpect(method(HttpMethod.PATCH))
@@ -162,6 +171,7 @@ class GitHubLexiconTargetTest {
     void anOpenPullRequestWithAnOlderFileIsUpdatedInPlace() {
         String content = LEXICON + "NY\tNeteweyên Yekbûyî\n";
         expectOpenPulls(PULL);
+        expectProposalParent("main-sha");
         expectRawFile(BRANCH, LEXICON);
         // Straight from the old proposal to the new one: the branch never matches the base, so the pull request stays
         // open.
@@ -171,6 +181,21 @@ class GitHubLexiconTargetTest {
                 .andRespond(withSuccess());
 
         assertThat(target.propose("kmr", SNAPSHOT, content, "the rows"))
+                .isEqualTo(Result.ok(URI.create("https://github.com/ZirekHQ/dengjen/pull/7")));
+        server.verify();
+    }
+
+    @Test
+    void anOpenPullRequestOnAnOlderBaseIsRebuiltEvenWithTheSameFile() {
+        expectOpenPulls(PULL);
+        expectProposalParent("older-main-sha");
+        // Merged from the older parent, a row the base changed since could survive although this file replaces it.
+        expectCommitOntoTheExistingBranch(LEXICON);
+        server.expect(requestTo(REPO + "pulls/7"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andRespond(withSuccess());
+
+        assertThat(target.propose("kmr", SNAPSHOT, LEXICON, "the rows"))
                 .isEqualTo(Result.ok(URI.create("https://github.com/ZirekHQ/dengjen/pull/7")));
         server.verify();
     }
