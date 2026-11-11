@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 /**
  * Signs in as one installation of a GitHub App, so commits and pull requests are made by the App's bot rather than a
@@ -27,6 +28,7 @@ import org.springframework.web.client.RestClient;
  */
 public class GitHubAppToken implements Supplier<String> {
     private static final Duration RENEW_BEFORE_EXPIRY = Duration.ofMinutes(5);
+    private static final Duration LAST_USABLE_BEFORE_EXPIRY = Duration.ofMinutes(1);
     private static final Base64.Encoder BASE64URL = Base64.getUrlEncoder().withoutPadding();
     // AlgorithmIdentifier { rsaEncryption, NULL }, the fixed prefix PKCS#8 puts around an RSA key.
     private static final byte[] RSA_ALGORITHM = {
@@ -46,6 +48,7 @@ public class GitHubAppToken implements Supplier<String> {
     private final Clock clock;
     private Optional<Cached> cached = Optional.empty();
 
+    /** Signs in as installation {@code installationId} of App {@code appId}, keeping time by {@code clock}. */
     public GitHubAppToken(RestClient http, String appId, long installationId, String privateKeyPem, Clock clock) {
         this.http = http;
         this.appId = appId;
@@ -54,15 +57,30 @@ public class GitHubAppToken implements Supplier<String> {
         this.clock = clock;
     }
 
+    /** A short-lived installation token, reused while it has more than five minutes left. */
     @Override
     public synchronized String get() {
-        Instant renewAt = clock.instant().plus(RENEW_BEFORE_EXPIRY);
-        Cached current =
-                cached.filter(token -> token.expiresAt().isAfter(renewAt)).orElseGet(this::mint);
+        Instant now = clock.instant();
+        Cached current = cached.filter(token -> token.expiresAt().isAfter(now.plus(RENEW_BEFORE_EXPIRY)))
+                .orElseGet(() -> renew(now));
         cached = Optional.of(current);
         return current.token();
     }
 
+    /**
+     * Renewing early leaves room to fail: while GitHub cannot mint a new token, the old one is used for as long as one
+     * request can still finish with it.
+     */
+    private Cached renew(Instant now) {
+        try {
+            return mint();
+        } catch (RestClientException e) {
+            return cached.filter(token -> token.expiresAt().isAfter(now.plus(LAST_USABLE_BEFORE_EXPIRY)))
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    /** Exchanges a signed JWT for a new installation token. */
     private Cached mint() {
         Installation installation = http.post()
                 .uri("https://api.github.com/app/installations/" + installationId + "/access_tokens")
@@ -93,6 +111,7 @@ public class GitHubAppToken implements Supplier<String> {
         }
     }
 
+    /** Base64url without padding, as JWT segments are written. */
     private static String encode(String json) {
         return BASE64URL.encodeToString(json.getBytes(StandardCharsets.UTF_8));
     }
@@ -120,6 +139,7 @@ public class GitHubAppToken implements Supplier<String> {
         return tagged(0x30, body.toByteArray());
     }
 
+    /** A DER element: tag, length in short or long form, then content. */
     private static byte[] tagged(int tag, byte[] content) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(tag);

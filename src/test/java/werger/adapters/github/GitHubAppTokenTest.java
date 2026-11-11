@@ -1,10 +1,12 @@
 package werger.adapters.github;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.nio.charset.StandardCharsets;
@@ -23,12 +25,15 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+/** {@link GitHubAppToken} against a mocked GitHub API and a clock the test moves. */
 class GitHubAppTokenTest {
     private static final Instant NOW = Instant.parse("2026-11-11T12:00:00Z");
     private static final String TOKENS = "https://api.github.com/app/installations/42/access_tokens";
     private static final KeyPair KEYS = keys();
 
+    /** One RSA key pair for every test, as generating one is slow. */
     private static KeyPair keys() {
         try {
             KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
@@ -39,6 +44,7 @@ class GitHubAppTokenTest {
         }
     }
 
+    /** A clock that stays where the test puts it. */
     private static final class MovableClock extends Clock {
         Instant now = NOW;
 
@@ -58,6 +64,7 @@ class GitHubAppTokenTest {
         }
     }
 
+    /** {@code der} as a PEM block of {@code type}. */
     private static String pem(String type, byte[] der) {
         return "-----BEGIN " + type + "-----\n" + Base64.getMimeEncoder().encodeToString(der) + "\n-----END " + type
                 + "-----\n";
@@ -77,10 +84,12 @@ class GitHubAppTokenTest {
             MockRestServiceServer.bindTo(builder).build();
     private final MovableClock clock = new MovableClock();
 
+    /** A token source for installation 42 of App 1234, given its key as GitHub issues it. */
     private GitHubAppToken token() {
         return new GitHubAppToken(builder.build(), "1234", 42, pem("RSA PRIVATE KEY", pkcs1()), clock);
     }
 
+    /** GitHub mints {@code token}, valid until {@code expiresAt}, once. */
     private void expectToken(String token, Instant expiresAt) {
         server.expect(once(), requestTo(TOKENS))
                 .andExpect(method(HttpMethod.POST))
@@ -134,6 +143,26 @@ class GitHubAppTokenTest {
         expectToken("second", NOW.plus(Duration.ofHours(2)));
         clock.now = NOW.plus(Duration.ofMinutes(55));
         assertThat(token.get()).isEqualTo("second");
+        server.verify();
+    }
+
+    @Test
+    void aFailedEarlyRenewalFallsBackToTheTokenStillValid() {
+        GitHubAppToken token = token();
+        expectToken("first", NOW.plus(Duration.ofHours(1)));
+        assertThat(token.get()).isEqualTo("first");
+        server.verify();
+
+        server.reset();
+        server.expect(once(), requestTo(TOKENS)).andRespond(withServerError());
+        clock.now = NOW.plus(Duration.ofMinutes(57));
+        assertThat(token.get()).isEqualTo("first");
+        server.verify();
+
+        server.reset();
+        server.expect(once(), requestTo(TOKENS)).andRespond(withServerError());
+        clock.now = NOW.plus(Duration.ofMinutes(59).plusSeconds(30));
+        assertThatThrownBy(token::get).isInstanceOf(RestClientException.class);
         server.verify();
     }
 }
