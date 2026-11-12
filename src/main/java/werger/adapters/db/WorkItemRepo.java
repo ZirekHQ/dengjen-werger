@@ -130,13 +130,14 @@ public class WorkItemRepo {
     }
 
     /**
-     * Only an approved item, or one queued after a transient push failure, can be synced, so a late retry cannot
-     * overwrite a newer state.
+     * Only an approved item, or one queued after a transient push failure, can be synced, and only by the submission
+     * it was approved for, so a late retry cannot overwrite a newer state.
      */
-    public boolean markSynced(UUID id) {
-        return transition(
-                "update work_items set status = 'synced' where id = ? and status in ('approved', 'upstream_approval_pending')",
-                id);
+    public boolean markSynced(UUID id, UUID submissionId) {
+        return transition("""
+                update work_items set status = 'synced'
+                where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
+                """, id, submissionId);
     }
 
     public boolean markUpstreamApprovalPending(UUID id) {

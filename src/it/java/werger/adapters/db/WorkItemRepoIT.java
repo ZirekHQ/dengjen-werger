@@ -437,23 +437,45 @@ class WorkItemRepoIT {
 
     @Test
     void markSyncedOnlyMovesAnApprovedItem() {
-        UUID approved = itemWithStatus("approved");
+        UUID item = newItem().id();
+        UUID submission = newSubmission(item, newUser());
+        awaitReview(item, submission);
+        repo.markApproved(item, submission);
         UUID available = newItem().id();
 
-        assertThat(repo.markSynced(approved)).isTrue();
-        assertThat(repo.markSynced(available)).isFalse();
-        assertThat(statusOf(approved)).isEqualTo("synced");
+        assertThat(repo.markSynced(item, submission)).isTrue();
+        assertThat(repo.markSynced(available, submission)).isFalse();
+        assertThat(statusOf(item)).isEqualTo("synced");
         assertThat(statusOf(available)).isEqualTo("available");
     }
 
     @Test
     void markSyncedAlsoCompletesAnItemQueuedForUpstreamApproval() {
-        UUID queued = itemWithStatus("upstream_approval_pending");
-        UUID synced = itemWithStatus("synced");
+        UUID item = newItem().id();
+        UUID submission = newSubmission(item, newUser());
+        awaitReview(item, submission);
+        repo.markApproved(item, submission);
+        repo.markUpstreamApprovalPending(item);
+        UUID synced = newItem().id();
+        jdbc.update("update work_items set status = 'synced' where id = ?", synced);
 
-        assertThat(repo.markSynced(queued)).isTrue();
-        assertThat(repo.markSynced(synced)).isFalse();
-        assertThat(statusOf(queued)).isEqualTo("synced");
+        assertThat(repo.markSynced(item, submission)).isTrue();
+        assertThat(repo.markSynced(synced, submission)).isFalse();
+        assertThat(statusOf(item)).isEqualTo("synced");
+    }
+
+    @Test
+    void aStaleRetryCannotSyncAnItemApprovedForANewerSubmission() {
+        UUID item = newItem().id();
+        UUID stale = newSubmission(item, newUser());
+        UUID current = newSubmission(item, newUser());
+        awaitReview(item, current);
+        repo.markApproved(item, current);
+        repo.markUpstreamApprovalPending(item);
+
+        assertThat(repo.markSynced(item, stale)).isFalse();
+        assertThat(statusOf(item)).isEqualTo("upstream_approval_pending");
+        assertThat(repo.markSynced(item, current)).isTrue();
     }
 
     @Test

@@ -67,7 +67,7 @@ class ApprovalServiceTest {
         }
 
         @Override
-        public boolean markSynced(UUID id) {
+        public boolean markSynced(UUID id, UUID submissionId) {
             calls.add("synced");
             return transitionMatches;
         }

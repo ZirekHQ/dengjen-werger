@@ -34,11 +34,11 @@ public class ApprovalService {
                 .find(submission.workItem())
                 .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
         return source.submit(item, submission.proposedTranslation())
-                .<ApprovalOutcome>fold(error -> onPushFailed(item, error), ok -> markSynced(item));
+                .<ApprovalOutcome>fold(error -> onPushFailed(item, error), ok -> markSynced(submission));
     }
 
-    private ApprovalOutcome markSynced(WorkItem item) {
-        return recorded(workItems.markSynced(item.id()), new ApprovalOutcome.Synced());
+    private ApprovalOutcome markSynced(Submission submission) {
+        return recorded(workItems.markSynced(submission.workItem(), submission.id()), new ApprovalOutcome.Synced());
     }
 
     private ApprovalOutcome onPushFailed(WorkItem item, SourceError error) {
