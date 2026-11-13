@@ -457,7 +457,7 @@ class WorkItemRepoIT {
     void anItemAwaitingCountersignCannotBePushedUntilItIsApprovedAgain() {
         UUID waiting = itemWithStatus("awaiting_countersign");
 
-        assertThat(repo.markSynced(waiting)).isFalse();
+        assertThat(repo.markSynced(waiting, UUID.randomUUID())).isFalse();
         assertThat(repo.markUpstreamApprovalPending(waiting)).isFalse();
         assertThat(statusOf(waiting)).isEqualTo("awaiting_countersign");
     }

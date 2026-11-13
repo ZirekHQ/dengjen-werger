@@ -31,6 +31,11 @@ public class ApprovalService {
         return push(submission);
     }
 
+    /** Pushes an approval whose earlier push never recorded a result. The item's status already holds the trust decision. */
+    public ApprovalOutcome retryPush(Submission submission) {
+        return push(submission);
+    }
+
     private ApprovalOutcome push(Submission submission) {
         WorkItem item = workItems
                 .find(submission.workItem())
