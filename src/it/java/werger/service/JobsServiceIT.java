@@ -31,6 +31,7 @@ class JobsServiceIT {
     private JobsService jobs;
     private final List<String> pushed = new ArrayList<>();
     private Result<SourceError, Void> pushResult = Result.ok(null);
+    private Runnable duringPush = () -> {};
 
     @BeforeEach
     void connect() {
@@ -70,6 +71,7 @@ class JobsServiceIT {
         @Override
         public Result<SourceError, Void> submit(WorkItem item, String translation) {
             pushed.add(item.id().toString());
+            duringPush.run();
             return pushResult;
         }
     }
@@ -160,6 +162,23 @@ class JobsServiceIT {
 
         assertThat(pushed).containsExactly(refused.workItem().toString());
         assertThat(db.statusOf(refused.workItem())).isEqualTo("upstream_rejected");
+    }
+
+    @Test
+    void aPushThatOutlivesItsClaimNeitherReleasesNorOverwritesTheNewHoldersClaim() {
+        Submission slow = approvedAfterACrash();
+        Instant afterLapse = NOW.plus(ApprovalService.PUSH_CLAIM).plusSeconds(1);
+        pushResult = Result.err(new SourceError.Transient("hung"));
+        duringPush = () -> assertThat(workItems.claimPush(
+                        slow.workItem(), afterLapse, afterLapse.plusSeconds(300), UUID.randomUUID()))
+                .isTrue();
+
+        assertThat(jobs.retryOwedPushes()).isZero();
+
+        assertThat(db.statusOf(slow.workItem())).isEqualTo("approved");
+        assertThat(workItems.claimPush(
+                        slow.workItem(), afterLapse.plusSeconds(1), afterLapse.plusSeconds(400), UUID.randomUUID()))
+                .isFalse();
     }
 
     @Test
