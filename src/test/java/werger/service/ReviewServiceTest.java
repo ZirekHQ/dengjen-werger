@@ -104,6 +104,7 @@ class ReviewServiceTest {
 
     private static final class StubApprovals extends ApprovalService {
         final List<String> calls = new ArrayList<>();
+        boolean pushThrows;
 
         StubApprovals() {
             super(new NoSource(), new WorkItemRepo(new JdbcTemplate()), Clock.fixed(NOW, ZoneOffset.UTC));
@@ -112,6 +113,9 @@ class ReviewServiceTest {
         @Override
         public ApprovalOutcome onApproved(Submission submission) {
             calls.add(submission.id().toString());
+            if (pushThrows) {
+                throw new IllegalStateException("db down");
+            }
             return new ApprovalOutcome.Synced();
         }
     }
@@ -243,6 +247,16 @@ class ReviewServiceTest {
 
         assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.Synced())));
         assertThat(approvals.calls).containsExactly(SUBMISSION.id().toString());
+    }
+
+    @Test
+    void aPushThatThrowsAfterTheReviewCommittedStillReportsTheVerdictAsRecorded() {
+        approvals.pushThrows = true;
+
+        var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.PushDeferred())));
+        assertThat(points.awarded).isNotEmpty();
     }
 
     @Test

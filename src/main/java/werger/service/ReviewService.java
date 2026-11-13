@@ -5,6 +5,8 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 import werger.adapters.db.PointsRepo;
@@ -22,6 +24,7 @@ import werger.ports.Result;
 
 /** Serves reviewers the oldest pending submission and records their verdict. */
 public class ReviewService {
+    private static final Logger LOG = LoggerFactory.getLogger(ReviewService.class);
     static final Duration REVISION_WINDOW = Duration.ofHours(48);
     static final int REVIEW_POINTS = 5;
     static final int APPROVAL_POINTS = 10;
@@ -79,7 +82,17 @@ public class ReviewService {
         if (review.verdict() != ReviewVerdict.APPROVED) {
             return Optional.empty();
         }
-        return Optional.of(trusted ? approvals.onApproved(submission) : new ApprovalOutcome.AwaitingCountersign());
+        return Optional.of(trusted ? push(submission) : new ApprovalOutcome.AwaitingCountersign());
+    }
+
+    // The review has committed, so a failure here must not read as a failed review; the sweep owns the retry.
+    private ApprovalOutcome push(Submission submission) {
+        try {
+            return approvals.onApproved(submission);
+        } catch (RuntimeException e) {
+            LOG.error("Push failed after review of submission {}; the sweep retries it", submission.id(), e);
+            return new ApprovalOutcome.PushDeferred();
+        }
     }
 
     // The status-gated transition runs first so that of two racing reviewers only one reaches the review insert.
