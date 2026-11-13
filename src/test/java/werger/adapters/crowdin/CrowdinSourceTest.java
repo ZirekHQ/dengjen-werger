@@ -248,7 +248,8 @@ class CrowdinSourceTest {
         var result = source(client).submit(item("42"), "Silav");
 
         assertThat(result).isInstanceOf(Result.Ok.class);
-        assertThat(client.calls).containsExactly("lookup:kmr:42", "create:kmr:42:Silav", "approve:900");
+        assertThat(client.calls)
+                .containsExactly("getTranslations", "lookup:kmr:42", "create:kmr:42:Silav", "approve:900");
     }
 
     @Test
@@ -259,7 +260,24 @@ class CrowdinSourceTest {
         var result = source(client).submit(item("42"), "Silav");
 
         assertThat(result).isInstanceOf(Result.Ok.class);
-        assertThat(client.calls).containsExactly("lookup:kmr:42", "approve:8");
+        assertThat(client.calls).containsExactly("getTranslations", "lookup:kmr:42", "approve:8");
+    }
+
+    @Test
+    void submitRejectsAPluralStringBeforeAnyLookupCreateOrApproval() {
+        var client = new StubClient(List.of(), List.of(), pluralForms(42, 420, 421));
+
+        assertThat(source(client).submit(item("42"), "form 420"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
+        assertThat(client.calls).containsExactly("getTranslations");
+    }
+
+    @Test
+    void submitIgnoresPluralFormsOfOtherStrings() {
+        var client = new StubClient(List.of(), List.of(), pluralForms(7, 70, 71));
+
+        assertThat(source(client).submit(item("42"), "Silav")).isInstanceOf(Result.Ok.class);
     }
 
     @Test
@@ -269,7 +287,7 @@ class CrowdinSourceTest {
 
         source(client).submit(item("42"), "Silav");
 
-        assertThat(client.calls).containsExactly("lookup:kmr:42", "create:kmr:42:Silav");
+        assertThat(client.calls).containsExactly("getTranslations", "lookup:kmr:42", "create:kmr:42:Silav");
     }
 
     @Test
