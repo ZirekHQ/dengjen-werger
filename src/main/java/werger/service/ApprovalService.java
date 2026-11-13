@@ -47,12 +47,21 @@ public class ApprovalService {
     }
 
     private ApprovalOutcome pushClaimed(Submission submission, UUID claimId) {
-        WorkItem item = workItems
-                .find(submission.workItem())
-                .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
+        WorkItem item = findOrRelease(submission, claimId);
         return source.submit(item, submission.proposedTranslation())
                 .<ApprovalOutcome>fold(
                         error -> onPushFailed(item, submission, claimId, error), ok -> markSynced(submission));
+    }
+
+    private WorkItem findOrRelease(Submission submission, UUID claimId) {
+        try {
+            return workItems
+                    .find(submission.workItem())
+                    .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
+        } catch (RuntimeException e) {
+            workItems.releasePush(submission.workItem(), claimId);
+            throw e;
+        }
     }
 
     private ApprovalOutcome markSynced(Submission submission) {

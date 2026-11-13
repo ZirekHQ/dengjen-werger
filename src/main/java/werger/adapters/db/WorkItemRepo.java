@@ -157,6 +157,14 @@ public class WorkItemRepo {
                 """, utc(until), claimId, id, utc(now));
     }
 
+    /** Gives up the claim without a status change, so the next sweep retries at once; only the holder can. */
+    public boolean releasePush(UUID id, UUID claimId) {
+        return transition("""
+                update work_items set push_claimed_until = null, push_claim_id = null
+                where id = ? and push_claim_id = ?
+                """, id, claimId);
+    }
+
     /** Releases the push claim, so the next sweep retries the item; only the claim's holder can release it. */
     public boolean markUpstreamApprovalPending(UUID id, UUID submissionId, UUID claimId) {
         return transition("""

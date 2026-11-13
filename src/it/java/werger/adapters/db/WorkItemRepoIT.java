@@ -570,6 +570,18 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void onlyTheHolderCanReleaseAClaimAndTheItemIsClaimableAtOnce() {
+        UUID approved = itemWithStatus("approved");
+        UUID claim = claim(approved);
+
+        assertThat(repo.releasePush(approved, UUID.randomUUID())).isFalse();
+        assertThat(repo.releasePush(approved, claim)).isTrue();
+        assertThat(repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), UUID.randomUUID()))
+                .isTrue();
+        assertThat(statusOf(approved)).isEqualTo("approved");
+    }
+
+    @Test
     void findMapsAnItemAwaitingCountersign() {
         UUID waiting = itemWithStatus("awaiting_countersign");
 

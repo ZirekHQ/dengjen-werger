@@ -1,6 +1,7 @@
 package werger.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -61,6 +62,7 @@ class ApprovalServiceTest {
         Instant claimedUntil;
         UUID claimedBy;
         UUID releasedBy;
+        boolean findFails;
 
         StubWorkItems() {
             super(new JdbcTemplate());
@@ -68,6 +70,9 @@ class ApprovalServiceTest {
 
         @Override
         public Optional<WorkItem> find(UUID id) {
+            if (findFails) {
+                throw new IllegalStateException("db down");
+            }
             return Optional.of(ITEM);
         }
 
@@ -76,6 +81,12 @@ class ApprovalServiceTest {
             claimedBy = claimId;
             claimedUntil = until;
             return claimable;
+        }
+
+        @Override
+        public boolean releasePush(UUID id, UUID claimId) {
+            releasedBy = claimId;
+            return true;
         }
 
         @Override
@@ -120,6 +131,16 @@ class ApprovalServiceTest {
 
         assertThat(outcome).isEqualTo(new ApprovalOutcome.UpstreamPending());
         assertThat(workItems.calls).containsExactly("upstream_pending");
+    }
+
+    @Test
+    void aFailedItemReadReleasesTheClaimBeforeRethrowing() {
+        workItems.findFails = true;
+
+        assertThatThrownBy(() -> service.onApproved(SUBMISSION)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(workItems.releasedBy).isNotNull().isEqualTo(workItems.claimedBy);
+        assertThat(source.pushed).isEmpty();
     }
 
     @Test
