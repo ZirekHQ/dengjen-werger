@@ -19,6 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class CrowdinClient {
     private static final String BASE = "https://api.crowdin.com/api/v2/projects/";
     private static final String FILE_ID = "fileId";
+    private static final String LANGUAGE_ID = "languageId";
 
     private final RestClient httpClient;
     private final String token;
@@ -92,7 +93,7 @@ public class CrowdinClient {
         return paginate(
                         offset -> resource("approvals", offset)
                                 .queryParam(FILE_ID, fileId)
-                                .queryParam("languageId", languageId)
+                                .queryParam(LANGUAGE_ID, languageId)
                                 .build()
                                 .toUri(),
                         new ParameterizedTypeReference<CrowdinEnvelope<CrowdinApproval>>() {})
@@ -130,7 +131,7 @@ public class CrowdinClient {
         return paginate(
                 offset -> resource("translations", offset)
                         .queryParam("stringId", stringId)
-                        .queryParam("languageId", languageId)
+                        .queryParam(LANGUAGE_ID, languageId)
                         .build()
                         .toUri(),
                 new ParameterizedTypeReference<CrowdinEnvelope<CrowdinStringTranslation>>() {});
@@ -138,7 +139,7 @@ public class CrowdinClient {
 
     public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
         CrowdinEnvelope.Wrapped<CrowdinCreatedTranslation> created = post(
-                        "translations", Map.of("stringId", stringId, "languageId", languageId, "text", text))
+                        "translations", Map.of("stringId", stringId, LANGUAGE_ID, languageId, "text", text))
                 .body(new ParameterizedTypeReference<>() {});
         if (created == null || created.data() == null) {
             throw new IllegalStateException("Crowdin returned no created translation");
