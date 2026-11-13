@@ -324,6 +324,139 @@ class WorkItemRepoIT {
         assertThat(repo.find(item.id()).orElseThrow().status()).isInstanceOf(WorkItemStatus.InProgress.class);
     }
 
+    private WorkItem revisionPendingUntil(UUID submitter, Instant deadline) {
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), submitter);
+        awaitReview(item.id(), submission);
+        repo.moveToRevisionPending(item.id(), submission, submitter, Optional.of("fix"), deadline);
+        return item;
+    }
+
+    // Fixed past instants keep the sweep from touching revisions that other data in the dev database still has open.
+    private static final Instant SWEEP_NOW = Instant.parse("2000-01-02T00:00:00Z");
+
+    @Test
+    void reopenExpiredRevisionsFreesOnlyItemsPastTheirDeadline() {
+        WorkItem lapsed = revisionPendingUntil(newUser(), SWEEP_NOW.minusSeconds(60));
+        WorkItem running = revisionPendingUntil(newUser(), SWEEP_NOW.plusSeconds(3600));
+
+        repo.reopenExpiredRevisions(SWEEP_NOW);
+
+        assertThat(statusOf(lapsed.id())).isEqualTo("available");
+        assertThat(statusOf(running.id())).isEqualTo("revision_pending");
+    }
+
+    @Test
+    void anItemWhoseDeadlineIsExactlyNowIsReopenedRatherThanStranded() {
+        UUID submitter = newUser();
+        WorkItem item = revisionPendingUntil(submitter, SWEEP_NOW);
+
+        // reclaimForRevision needs deadline > now, so at the deadline only the sweep can move the item.
+        assertThat(repo.reclaimForRevision(item.id(), submitter, SWEEP_NOW, SWEEP_NOW.plusSeconds(1800)))
+                .isFalse();
+        repo.reopenExpiredRevisions(SWEEP_NOW);
+
+        assertThat(statusOf(item.id())).isEqualTo("available");
+    }
+
+    @Test
+    void aReopenedItemKeepsNoRevisionStateAndCanBeLeasedByAnyone() {
+        WorkItem lapsed = revisionPendingUntil(newUser(), SWEEP_NOW.minusSeconds(60));
+
+        repo.reopenExpiredRevisions(SWEEP_NOW);
+
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from work_items where id = ? and revision_submitter is null"
+                                + " and revision_comment is null and revision_expires_at is null",
+                        Integer.class,
+                        lapsed.id()))
+                .isEqualTo(1);
+        assertThat(repo.tryLease(lapsed.id(), newUser(), SWEEP_NOW.plusSeconds(1800)))
+                .isTrue();
+    }
+
+    @Test
+    void reopenExpiredRevisionsLeavesItemsInOtherStatesUntouched() {
+        WorkItem leased = newItem();
+        repo.tryLease(leased.id(), newUser(), SWEEP_NOW.plusSeconds(1800));
+
+        repo.reopenExpiredRevisions(SWEEP_NOW);
+
+        assertThat(statusOf(leased.id())).isEqualTo("in_progress");
+    }
+
+    @Test
+    void aSweepRacingTheSubmittersReclaimLeavesTheItemInExactlyOneState() throws Exception {
+        UUID submitter = newUser();
+        Instant deadline = SWEEP_NOW.minusSeconds(60);
+        WorkItem item = revisionPendingUntil(submitter, deadline);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // The two callers disagree about whether the deadline has passed, so only the status gate can decide.
+            Future<Boolean> reclaim = executor.submit(() -> {
+                start.await();
+                return repo.reclaimForRevision(
+                        item.id(), submitter, deadline.minusSeconds(1), deadline.plusSeconds(1800));
+            });
+            Future<Integer> sweep = executor.submit(() -> {
+                start.await();
+                return repo.reopenExpiredRevisions(SWEEP_NOW);
+            });
+            start.countDown();
+            boolean reclaimed = get(reclaim);
+            sweep.get();
+
+            assertThat(statusOf(item.id())).isEqualTo(reclaimed ? "in_progress" : "available");
+        }
+    }
+
+    @Test
+    void ofManyConcurrentPushersExactlyOneClaimsTheItem() throws Exception {
+        UUID item = itemWithStatus("approved");
+        int pushers = 8;
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Boolean>> claims = IntStream.range(0, pushers)
+                    .mapToObj(i -> executor.submit(() -> {
+                        start.await();
+                        return repo.claimPush(item, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), UUID.randomUUID());
+                    }))
+                    .toList();
+            start.countDown();
+
+            assertThat(claims.stream().filter(WorkItemRepoIT::get).count()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void aLapsedClaimCanBeTakenAgainButAHeldOneCannot() {
+        UUID item = itemWithStatus("approved");
+
+        assertThat(repo.claimPush(item, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), UUID.randomUUID()))
+                .isTrue();
+        assertThat(repo.claimPush(item, SWEEP_NOW.plusSeconds(299), SWEEP_NOW.plusSeconds(900), UUID.randomUUID()))
+                .isFalse();
+        assertThat(repo.claimPush(item, SWEEP_NOW.plusSeconds(300), SWEEP_NOW.plusSeconds(900), UUID.randomUUID()))
+                .isTrue();
+    }
+
+    @Test
+    void onlyAnItemWithAPushOwedCanBeClaimedAndAQueuedFailureReleasesTheClaim() {
+        UUID synced = itemWithStatus("synced");
+        UUID approved = itemWithStatus("approved");
+        UUID submission = linkSubmission(approved);
+        UUID claim = claim(approved);
+
+        assertThat(repo.claimPush(synced, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), UUID.randomUUID()))
+                .isFalse();
+        assertThat(repo.markUpstreamApprovalPending(approved, submission, claim))
+                .isTrue();
+        assertThat(repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), UUID.randomUUID()))
+                .isTrue();
+    }
+
     private UUID newSubmission(UUID workItem, UUID submitter) {
         UUID id = UUID.randomUUID();
         jdbc.update(
@@ -340,5 +473,187 @@ class WorkItemRepoIT {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private UUID claim(UUID item) {
+        UUID claim = UUID.randomUUID();
+        assertThat(repo.claimPush(item, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), claim))
+                .isTrue();
+        return claim;
+    }
+
+    private UUID linkSubmission(UUID item) {
+        UUID submission = newSubmission(item, newUser());
+        jdbc.update("update work_items set pending_submission_id = ? where id = ?", submission, item);
+        return submission;
+    }
+
+    private UUID itemWithStatus(String status) {
+        UUID id = newItem().id();
+        jdbc.update("update work_items set status = ?::work_item_status where id = ?", status, id);
+        return id;
+    }
+
+    @Test
+    void markApprovedAwaitingCountersignOnlyFromPendingReviewForTheCurrentSubmission() {
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), newUser());
+
+        assertThat(repo.markApprovedAwaitingCountersign(item.id(), submission)).isFalse();
+        awaitReview(item.id(), submission);
+        assertThat(repo.markApprovedAwaitingCountersign(item.id(), UUID.randomUUID()))
+                .isFalse();
+        assertThat(repo.markApprovedAwaitingCountersign(item.id(), submission)).isTrue();
+        assertThat(statusOf(item.id())).isEqualTo("awaiting_countersign");
+    }
+
+    @Test
+    void markUpstreamRejectedMovesOnlyAnItemWithAPushOwed() {
+        UUID approved = itemWithStatus("approved");
+        UUID queued = itemWithStatus("upstream_approval_pending");
+        UUID synced = itemWithStatus("synced");
+        UUID approvedSubmission = linkSubmission(approved);
+        UUID queuedSubmission = linkSubmission(queued);
+
+        UUID approvedClaim = claim(approved);
+        UUID queuedClaim = claim(queued);
+
+        assertThat(repo.markUpstreamRejected(approved, approvedSubmission, approvedClaim))
+                .isTrue();
+        assertThat(repo.markUpstreamRejected(queued, queuedSubmission, queuedClaim))
+                .isTrue();
+        assertThat(repo.markUpstreamRejected(synced, UUID.randomUUID(), UUID.randomUUID()))
+                .isFalse();
+        assertThat(statusOf(approved)).isEqualTo("upstream_rejected");
+        assertThat(statusOf(queued)).isEqualTo("upstream_rejected");
+        assertThat(repo.find(approved).orElseThrow().status()).isEqualTo(new WorkItemStatus.UpstreamRejected());
+    }
+
+    @Test
+    void aStaleSubmissionCannotRejectAnItemApprovedForANewerOne() {
+        UUID approved = itemWithStatus("approved");
+        linkSubmission(approved);
+        UUID claim = claim(approved);
+
+        assertThat(repo.markUpstreamRejected(approved, UUID.randomUUID(), claim))
+                .isFalse();
+        assertThat(statusOf(approved)).isEqualTo("approved");
+    }
+
+    @Test
+    void aStaleSubmissionCannotQueueAnItemApprovedForANewerOne() {
+        UUID approved = itemWithStatus("approved");
+        linkSubmission(approved);
+        UUID claim = claim(approved);
+
+        assertThat(repo.markUpstreamApprovalPending(approved, UUID.randomUUID(), claim))
+                .isFalse();
+        assertThat(statusOf(approved)).isEqualTo("approved");
+    }
+
+    @Test
+    void aWorkerWhoseClaimWasTakenOverCannotReleaseOrRejectTheNewHoldersClaim() {
+        UUID approved = itemWithStatus("approved");
+        UUID submission = linkSubmission(approved);
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), first);
+        repo.claimPush(approved, SWEEP_NOW.plusSeconds(300), SWEEP_NOW.plusSeconds(600), second);
+
+        assertThat(repo.markUpstreamApprovalPending(approved, submission, first))
+                .isFalse();
+        assertThat(repo.markUpstreamRejected(approved, submission, first)).isFalse();
+        assertThat(repo.claimPush(approved, SWEEP_NOW.plusSeconds(301), SWEEP_NOW.plusSeconds(900), UUID.randomUUID()))
+                .isFalse();
+        assertThat(repo.markUpstreamApprovalPending(approved, submission, second))
+                .isTrue();
+    }
+
+    @Test
+    void onlyTheHolderCanReleaseAClaimAndTheItemIsClaimableAtOnce() {
+        UUID approved = itemWithStatus("approved");
+        UUID claim = claim(approved);
+
+        assertThat(repo.releasePush(approved, UUID.randomUUID())).isFalse();
+        assertThat(repo.releasePush(approved, claim)).isTrue();
+        assertThat(repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300), UUID.randomUUID()))
+                .isTrue();
+        assertThat(statusOf(approved)).isEqualTo("approved");
+    }
+
+    @Test
+    void findMapsAnItemAwaitingCountersign() {
+        UUID waiting = itemWithStatus("awaiting_countersign");
+
+        assertThat(repo.find(waiting).orElseThrow().status()).isEqualTo(new WorkItemStatus.AwaitingCountersign());
+    }
+
+    @Test
+    void anItemAwaitingCountersignCannotBePushedUntilItIsApprovedAgain() {
+        UUID waiting = itemWithStatus("awaiting_countersign");
+
+        assertThat(repo.markSynced(waiting, UUID.randomUUID())).isFalse();
+        assertThat(repo.markUpstreamApprovalPending(waiting, UUID.randomUUID(), UUID.randomUUID()))
+                .isFalse();
+        assertThat(statusOf(waiting)).isEqualTo("awaiting_countersign");
+    }
+
+    @Test
+    void markSyncedOnlyMovesAnApprovedItem() {
+        UUID item = newItem().id();
+        UUID submission = newSubmission(item, newUser());
+        awaitReview(item, submission);
+        repo.markApproved(item, submission);
+        UUID available = newItem().id();
+
+        assertThat(repo.markSynced(item, submission)).isTrue();
+        assertThat(repo.markSynced(available, submission)).isFalse();
+        assertThat(statusOf(item)).isEqualTo("synced");
+        assertThat(statusOf(available)).isEqualTo("available");
+    }
+
+    @Test
+    void markSyncedAlsoCompletesAnItemQueuedForUpstreamApproval() {
+        UUID item = newItem().id();
+        UUID submission = newSubmission(item, newUser());
+        awaitReview(item, submission);
+        repo.markApproved(item, submission);
+        repo.markUpstreamApprovalPending(item, submission, claim(item));
+        UUID synced = newItem().id();
+        jdbc.update("update work_items set status = 'synced' where id = ?", synced);
+
+        assertThat(repo.markSynced(item, submission)).isTrue();
+        assertThat(repo.markSynced(synced, submission)).isFalse();
+        assertThat(statusOf(item)).isEqualTo("synced");
+    }
+
+    @Test
+    void aStaleRetryCannotSyncAnItemApprovedForANewerSubmission() {
+        UUID item = newItem().id();
+        UUID stale = newSubmission(item, newUser());
+        UUID current = newSubmission(item, newUser());
+        awaitReview(item, current);
+        repo.markApproved(item, current);
+        repo.markUpstreamApprovalPending(item, current, claim(item));
+
+        assertThat(repo.markSynced(item, stale)).isFalse();
+        assertThat(statusOf(item)).isEqualTo("upstream_approval_pending");
+        assertThat(repo.markSynced(item, current)).isTrue();
+    }
+
+    @Test
+    void markUpstreamApprovalPendingOnlyMovesAnApprovedItem() {
+        UUID approved = itemWithStatus("approved");
+        UUID synced = itemWithStatus("synced");
+        UUID submission = linkSubmission(approved);
+
+        UUID claim = claim(approved);
+
+        assertThat(repo.markUpstreamApprovalPending(approved, submission, claim))
+                .isTrue();
+        assertThat(repo.markUpstreamApprovalPending(synced, UUID.randomUUID(), UUID.randomUUID()))
+                .isFalse();
+        assertThat(statusOf(approved)).isEqualTo("upstream_approval_pending");
+        assertThat(statusOf(synced)).isEqualTo("synced");
     }
 }

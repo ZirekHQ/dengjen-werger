@@ -33,6 +33,9 @@ class CrowdinSourceTest {
         final List<CrowdinTranslation> submitted;
         final List<String> calls = new ArrayList<>();
         RuntimeException createFailure;
+        RuntimeException approveFailure;
+        List<CrowdinStringTranslation> existing = List.of();
+        Set<Long> pluralStrings = Set.of();
 
         StubClient(List<CrowdinSourceString> strings, List<CrowdinTranslation> approved) {
             this(strings, approved, approved);
@@ -73,6 +76,18 @@ class CrowdinSourceTest {
         }
 
         @Override
+        public boolean hasPlurals(long stringId) {
+            calls.add("plural?:" + stringId);
+            return pluralStrings.contains(stringId);
+        }
+
+        @Override
+        public List<CrowdinStringTranslation> stringTranslations(String languageId, long stringId) {
+            calls.add("lookup:" + languageId + ":" + stringId);
+            return existing;
+        }
+
+        @Override
         public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
             calls.add("create:" + languageId + ":" + stringId + ":" + text);
             if (createFailure != null) {
@@ -84,6 +99,9 @@ class CrowdinSourceTest {
         @Override
         public void approveTranslation(long translationId) {
             calls.add("approve:" + translationId);
+            if (approveFailure != null) {
+                throw approveFailure;
+            }
         }
     }
 
@@ -231,13 +249,75 @@ class CrowdinSourceTest {
     }
 
     @Test
-    void submitCreatesTheTranslationWithoutApprovingIt() {
+    void submitCreatesTheTranslationThenApprovesTheOneItCreated() {
         var client = new StubClient(List.of(), List.of());
 
         var result = source(client).submit(item("42"), "Silav");
 
         assertThat(result).isInstanceOf(Result.Ok.class);
-        assertThat(client.calls).containsExactly("create:kmr:42:Silav");
+        assertThat(client.calls).containsExactly("plural?:42", "lookup:kmr:42", "create:kmr:42:Silav", "approve:900");
+    }
+
+    @Test
+    void submitApprovesTheExistingTranslationInsteadOfCreatingADuplicateOnRetry() {
+        var client = new StubClient(List.of(), List.of());
+        client.existing = List.of(new CrowdinStringTranslation(7L, "Other"), new CrowdinStringTranslation(8L, "Silav"));
+
+        var result = source(client).submit(item("42"), "Silav");
+
+        assertThat(result).isInstanceOf(Result.Ok.class);
+        assertThat(client.calls).containsExactly("plural?:42", "lookup:kmr:42", "approve:8");
+    }
+
+    @Test
+    void submitRejectsAnUntranslatedPluralStringBeforeAnyLookupCreateOrApproval() {
+        var client = new StubClient(List.of(), List.of());
+        client.pluralStrings = Set.of(42L);
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
+        assertThat(client.calls).containsExactly("plural?:42");
+    }
+
+    @Test
+    void submitIgnoresOtherStringsBeingPlural() {
+        var client = new StubClient(List.of(), List.of());
+        client.pluralStrings = Set.of(7L);
+
+        assertThat(source(client).submit(item("42"), "Silav")).isInstanceOf(Result.Ok.class);
+    }
+
+    @Test
+    void submitDoesNotApproveWhenCreatingFails() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure = new IllegalStateException("connection reset");
+
+        source(client).submit(item("42"), "Silav");
+
+        assertThat(client.calls).containsExactly("plural?:42", "lookup:kmr:42", "create:kmr:42:Silav");
+    }
+
+    @Test
+    void submitReturnsRejectedWhenCrowdinRefusesTheApproval() {
+        var client = new StubClient(List.of(), List.of());
+        client.approveFailure =
+                new RestClientResponseException("no", HttpStatus.FORBIDDEN, "Forbidden", null, null, null);
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
+    }
+
+    @Test
+    void submitReturnsTransientWhenTheApprovalFailsToReachCrowdin() {
+        var client = new StubClient(List.of(), List.of());
+        client.approveFailure =
+                new RestClientResponseException("down", HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null);
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
     }
 
     @Test

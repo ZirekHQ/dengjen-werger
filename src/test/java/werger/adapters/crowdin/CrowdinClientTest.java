@@ -45,6 +45,35 @@ class CrowdinClientTest {
     }
 
     @Test
+    void hasPluralsReadsTheFlagFromTheSingleStringEndpointEvenWhenTextIsAPluralObject() {
+        server.expect(requestTo(PROJECT + "/strings/42"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"data":{"id":42,"hasPlurals":true,"text":{"one":"%d book","other":"%d books"}}}""", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(PROJECT + "/strings/43")).andRespond(withSuccess("""
+                        {"data":{"id":43,"hasPlurals":false,"text":"OK"}}""", MediaType.APPLICATION_JSON));
+
+        assertThat(crowdin(500).hasPlurals(42L)).isTrue();
+        assertThat(crowdin(500).hasPlurals(43L)).isFalse();
+        server.verify();
+    }
+
+    @Test
+    void stringTranslationsQueriesOneStringInOneLanguageAndDecodesEachTranslation() {
+        server.expect(requestTo(Matchers.startsWith(PROJECT + "/translations")))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(queryParam("stringId", "42"))
+                .andExpect(queryParam("languageId", "kmr"))
+                .andRespond(withSuccess("""
+                        {"data":[{"data":{"id":7,"text":"Silav","stringId":42}},\
+                        {"data":{"id":8,"text":"Rojbaş","stringId":42}}]}""", MediaType.APPLICATION_JSON));
+
+        assertThat(crowdin(500).stringTranslations("kmr", 42L))
+                .containsExactly(new CrowdinStringTranslation(7L, "Silav"), new CrowdinStringTranslation(8L, "Rojbaş"));
+        server.verify();
+    }
+
+    @Test
     void sourceStringsFollowsCrowdinsPaginationUntilAPageComesBackShort() {
         server.expect(requestTo(Matchers.startsWith(PROJECT + "/strings")))
                 .andExpect(queryParam("offset", "0"))

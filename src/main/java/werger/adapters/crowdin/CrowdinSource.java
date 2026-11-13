@@ -33,6 +33,11 @@ public class CrowdinSource implements TranslationSource {
     }
 
     @Override
+    public String adapterName() {
+        return ADAPTER;
+    }
+
+    @Override
     public List<WorkItem> fetchWorkItems(Language language) {
         List<CrowdinTranslation> translations = client.getTranslations(language.code(), fileId);
         Set<Long> approvedTranslationIds = client.approvedTranslationIds(language.code(), fileId);
@@ -71,15 +76,30 @@ public class CrowdinSource implements TranslationSource {
         }
     }
 
+    // Both calls share one handler: a failed approval must not read as a sync, or the item is marked synced while
+    // Crowdin holds only a suggestion.
     private Result<SourceError, Void> create(WorkItem item, long stringId, String translation) {
         try {
-            client.createTranslation(item.language(), stringId, translation);
+            if (client.hasPlurals(stringId)) {
+                return Result.err(new SourceError.Rejected("Crowdin string " + stringId + " is plural"));
+            }
+            client.approveTranslation(translationId(item, stringId, translation));
             return Result.ok(null);
         } catch (RestClientResponseException e) {
             return Result.err(toError(e));
         } catch (RuntimeException e) {
             return Result.err(new SourceError.Transient(String.valueOf(e.getMessage())));
         }
+    }
+
+    // A retry after a failed approval finds the translation already on Crowdin; creating it again would duplicate it.
+    private long translationId(WorkItem item, long stringId, String translation) {
+        return client.stringTranslations(item.language(), stringId).stream()
+                .filter(t -> t.text().equals(translation))
+                .map(CrowdinStringTranslation::id)
+                .findFirst()
+                .orElseGet(() -> client.createTranslation(item.language(), stringId, translation)
+                        .id());
     }
 
     // A string can hold several submissions; the highest translationId is the most recent one.

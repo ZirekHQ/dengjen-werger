@@ -116,6 +116,74 @@ public class WorkItemRepo {
                 """, userId, utc(leaseExpiresAt), id, userId, utc(now));
     }
 
+    /**
+     * Reopens rejected items whose revision deadline has passed and reports how many. The status gate leaves an item the
+     * submitter has just reclaimed alone.
+     */
+    public int reopenExpiredRevisions(Instant now) {
+        return jdbc.update("""
+                update work_items
+                set status = 'available',
+                    revision_submitter = null, revision_comment = null, revision_expires_at = null
+                where status = 'revision_pending' and revision_expires_at <= ?
+                """, utc(now));
+    }
+
+    /**
+     * Only an approved item, or one queued after a transient push failure, can be synced, and only by the submission
+     * it was approved for, so a late retry cannot overwrite a newer state.
+     */
+    public boolean markSynced(UUID id, UUID submissionId) {
+        return transition("""
+                update work_items set status = 'synced'
+                where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
+                """, id, submissionId);
+    }
+
+    /** Records an untrusted approval directly as parked, so {@code approved} only ever means a push is owed. */
+    public boolean markApprovedAwaitingCountersign(UUID id, UUID submissionId) {
+        return transition("""
+                update work_items set status = 'awaiting_countersign'
+                where id = ? and status = 'pending_review' and pending_submission_id = ?
+                """, id, submissionId);
+    }
+
+    /** Takes the exclusive right to push the item until {@code until}; a lapsed claim can be taken again. */
+    public boolean claimPush(UUID id, Instant now, Instant until, UUID claimId) {
+        return transition("""
+                update work_items set push_claimed_until = ?, push_claim_id = ?
+                where id = ? and status in ('approved', 'upstream_approval_pending')
+                  and (push_claimed_until is null or push_claimed_until <= ?)
+                """, utc(until), claimId, id, utc(now));
+    }
+
+    /** Gives up the claim without a status change, so the next sweep retries at once; only the holder can. */
+    public boolean releasePush(UUID id, UUID claimId) {
+        return transition("""
+                update work_items set push_claimed_until = null, push_claim_id = null
+                where id = ? and push_claim_id = ?
+                """, id, claimId);
+    }
+
+    /** Releases the push claim, so the next sweep retries the item; only the claim's holder can release it. */
+    public boolean markUpstreamApprovalPending(UUID id, UUID submissionId, UUID claimId) {
+        return transition("""
+                update work_items
+                set status = 'upstream_approval_pending', push_claimed_until = null, push_claim_id = null
+                where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
+                  and push_claim_id = ?
+                """, id, submissionId, claimId);
+    }
+
+    /** Terminal: the retry sweep selects only {@code approved} and {@code upstream_approval_pending}. */
+    public boolean markUpstreamRejected(UUID id, UUID submissionId, UUID claimId) {
+        return transition("""
+                update work_items set status = 'upstream_rejected'
+                where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
+                  and push_claim_id = ?
+                """, id, submissionId, claimId);
+    }
+
     private boolean transition(String sql, Object... args) {
         return jdbc.update(sql, args) == 1;
     }
@@ -151,7 +219,9 @@ public class WorkItemRepo {
                         row.getObject("revision_expires_at", OffsetDateTime.class)
                                 .toInstant());
             case "approved" -> new WorkItemStatus.Approved();
+            case "awaiting_countersign" -> new WorkItemStatus.AwaitingCountersign();
             case "upstream_approval_pending" -> new WorkItemStatus.UpstreamApprovalPending();
+            case "upstream_rejected" -> new WorkItemStatus.UpstreamRejected();
             case "synced" -> new WorkItemStatus.Synced();
             case "retired" -> new WorkItemStatus.Retired();
             default -> throw new SQLException("Unknown work item status: " + row.getString("status"));
