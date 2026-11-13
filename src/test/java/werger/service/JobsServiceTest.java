@@ -86,4 +86,20 @@ class JobsServiceTest {
 
         assertThat(pushed).isEqualTo(1);
     }
+
+    @Test
+    void anOwedPushThatThrowsDoesNotStopTheRestOfTheSweep() {
+        Submission broken = new Submission(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "a", NOW);
+        Submission fine = new Submission(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "b", NOW);
+        var retry = (Function<Submission, ApprovalOutcome>) submission -> {
+            if (submission == broken) {
+                throw new IllegalStateException("db down");
+            }
+            return new ApprovalOutcome.Synced();
+        };
+
+        int pushed = jobs(new StubRepo(0), List.of(broken, fine), retry).retryOwedPushes();
+
+        assertThat(pushed).isEqualTo(1);
+    }
 }
