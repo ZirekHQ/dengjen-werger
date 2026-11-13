@@ -80,6 +80,12 @@ class JobsServiceIT {
         return submission;
     }
 
+    private void claimThenQueue(Submission submission) {
+        UUID claim = UUID.randomUUID();
+        workItems.claimPush(submission.workItem(), NOW, NOW.plusSeconds(60), claim);
+        workItems.markUpstreamApprovalPending(submission.workItem(), submission.id(), claim);
+    }
+
     @Test
     void anApprovalThatCrashedBeforeItsPushIsPushedAndSynced() {
         Submission stuck = approvedAfterACrash();
@@ -93,7 +99,7 @@ class JobsServiceIT {
     @Test
     void anItemQueuedAfterATransientFailureIsRetriedAndSynced() {
         Submission queued = approvedAfterACrash();
-        workItems.markUpstreamApprovalPending(queued.workItem(), queued.id());
+        claimThenQueue(queued);
 
         assertThat(jobs.retryOwedPushes()).isEqualTo(1);
 
@@ -159,7 +165,7 @@ class JobsServiceIT {
     @Test
     void anItemWhosePushIsInFlightIsLeftToThatPush() {
         Submission inFlight = approvedAfterACrash();
-        workItems.claimPush(inFlight.workItem(), NOW, NOW.plusSeconds(60));
+        workItems.claimPush(inFlight.workItem(), NOW, NOW.plusSeconds(60), UUID.randomUUID());
 
         assertThat(jobs.retryOwedPushes()).isZero();
 
@@ -170,7 +176,7 @@ class JobsServiceIT {
     @Test
     void anItemWhoseClaimLapsedAfterACrashIsPushedAgain() {
         Submission lapsed = approvedAfterACrash();
-        workItems.claimPush(lapsed.workItem(), NOW.minusSeconds(600), NOW.minusSeconds(1));
+        workItems.claimPush(lapsed.workItem(), NOW.minusSeconds(600), NOW.minusSeconds(1), UUID.randomUUID());
 
         assertThat(jobs.retryOwedPushes()).isEqualTo(1);
 

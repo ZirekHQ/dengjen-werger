@@ -149,28 +149,31 @@ public class WorkItemRepo {
     }
 
     /** Takes the exclusive right to push the item until {@code until}; a lapsed claim can be taken again. */
-    public boolean claimPush(UUID id, Instant now, Instant until) {
+    public boolean claimPush(UUID id, Instant now, Instant until, UUID claimId) {
         return transition("""
-                update work_items set push_claimed_until = ?
+                update work_items set push_claimed_until = ?, push_claim_id = ?
                 where id = ? and status in ('approved', 'upstream_approval_pending')
                   and (push_claimed_until is null or push_claimed_until <= ?)
-                """, utc(until), id, utc(now));
+                """, utc(until), claimId, id, utc(now));
     }
 
-    /** Releases the push claim, so the next sweep retries the item. */
-    public boolean markUpstreamApprovalPending(UUID id, UUID submissionId) {
+    /** Releases the push claim, so the next sweep retries the item; only the claim's holder can release it. */
+    public boolean markUpstreamApprovalPending(UUID id, UUID submissionId, UUID claimId) {
         return transition("""
-                update work_items set status = 'upstream_approval_pending', push_claimed_until = null
+                update work_items
+                set status = 'upstream_approval_pending', push_claimed_until = null, push_claim_id = null
                 where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
-                """, id, submissionId);
+                  and push_claim_id = ?
+                """, id, submissionId, claimId);
     }
 
     /** Terminal: the retry sweep selects only {@code approved} and {@code upstream_approval_pending}. */
-    public boolean markUpstreamRejected(UUID id, UUID submissionId) {
+    public boolean markUpstreamRejected(UUID id, UUID submissionId, UUID claimId) {
         return transition("""
                 update work_items set status = 'upstream_rejected'
                 where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
-                """, id, submissionId);
+                  and push_claim_id = ?
+                """, id, submissionId, claimId);
     }
 
     private boolean transition(String sql, Object... args) {

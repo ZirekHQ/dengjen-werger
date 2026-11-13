@@ -59,6 +59,8 @@ class ApprovalServiceTest {
         boolean transitionMatches = true;
         boolean claimable = true;
         Instant claimedUntil;
+        UUID claimedBy;
+        UUID releasedBy;
 
         StubWorkItems() {
             super(new JdbcTemplate());
@@ -70,7 +72,8 @@ class ApprovalServiceTest {
         }
 
         @Override
-        public boolean claimPush(UUID id, Instant now, Instant until) {
+        public boolean claimPush(UUID id, Instant now, Instant until, UUID claimId) {
+            claimedBy = claimId;
             claimedUntil = until;
             return claimable;
         }
@@ -82,13 +85,15 @@ class ApprovalServiceTest {
         }
 
         @Override
-        public boolean markUpstreamRejected(UUID id, UUID submissionId) {
+        public boolean markUpstreamRejected(UUID id, UUID submissionId, UUID claimId) {
+            releasedBy = claimId;
             calls.add("upstream_rejected");
             return transitionMatches;
         }
 
         @Override
-        public boolean markUpstreamApprovalPending(UUID id, UUID submissionId) {
+        public boolean markUpstreamApprovalPending(UUID id, UUID submissionId, UUID claimId) {
+            releasedBy = claimId;
             calls.add("upstream_pending");
             return transitionMatches;
         }
@@ -115,6 +120,15 @@ class ApprovalServiceTest {
 
         assertThat(outcome).isEqualTo(new ApprovalOutcome.UpstreamPending());
         assertThat(workItems.calls).containsExactly("upstream_pending");
+    }
+
+    @Test
+    void aFailedPushReleasesOnlyTheClaimItTook() {
+        source.outcome = Result.err(new SourceError.Transient("503"));
+
+        service.onApproved(SUBMISSION);
+
+        assertThat(workItems.releasedBy).isNotNull().isEqualTo(workItems.claimedBy);
     }
 
     @Test
