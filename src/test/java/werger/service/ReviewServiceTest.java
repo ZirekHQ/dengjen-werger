@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import werger.adapters.db.PointsRepo;
@@ -53,6 +54,12 @@ class ReviewServiceTest {
         }
 
         @Override
+        public boolean markApprovedAwaitingCountersign(UUID id, UUID submissionId) {
+            calls.add("awaiting_countersign");
+            return transitionWins;
+        }
+
+        @Override
         public boolean moveToRevisionPending(
                 UUID id, UUID submissionId, UUID submitter, Optional<String> comment, Instant expiresAt) {
             calls.add("revision:" + submitter);
@@ -64,9 +71,15 @@ class ReviewServiceTest {
 
     private static final class StubReviews extends ReviewRepo {
         final List<Review> inserted = new ArrayList<>();
+        List<Review> outcomes = List.of();
 
         StubReviews() {
             super(new JdbcTemplate());
+        }
+
+        @Override
+        public List<Review> decidedOutcomesOf(UUID submitter, int limit) {
+            return outcomes;
         }
 
         @Override
@@ -93,13 +106,13 @@ class ReviewServiceTest {
         final List<String> calls = new ArrayList<>();
 
         StubApprovals() {
-            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()), new ReviewRepo(new JdbcTemplate()));
+            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()));
         }
 
         @Override
-        public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
-            calls.add(reviewer + ":" + reviewerRole);
-            return new ApprovalOutcome.AwaitingCountersign();
+        public ApprovalOutcome onApproved(Submission submission) {
+            calls.add(submission.id().toString());
+            return new ApprovalOutcome.Synced();
         }
     }
 
@@ -150,8 +163,8 @@ class ReviewServiceTest {
     }
 
     @Test
-    void approvalMarksTheItemApprovedAndRecordsTheReview() {
-        var result = service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+    void aTrustedApprovalMarksTheItemApprovedAndRecordsTheReview() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result).isInstanceOf(Result.Ok.class);
         assertThat(workItems.calls).containsExactly("approved");
@@ -225,11 +238,41 @@ class ReviewServiceTest {
     }
 
     @Test
-    void anApprovalHandsTheReviewersIdentityAndRoleToTheApprovalGate() {
+    void aTrustedApprovalIsPushedAfterTheReviewCommits() {
         var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
 
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.Synced())));
+        assertThat(approvals.calls).containsExactly(SUBMISSION.id().toString());
+    }
+
+    @Test
+    void anUntrustedApprovalCommitsStraightIntoAwaitingCountersignAndIsNeverPushed() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
         assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.AwaitingCountersign())));
-        assertThat(approvals.calls).containsExactly(REVIEWER + ":MAINTAINER");
+        assertThat(workItems.calls).containsExactly("awaiting_countersign");
+        assertThat(approvals.calls).isEmpty();
+    }
+
+    @Test
+    void aContributorWithAnEarnedRecordIsTrustedToPush() {
+        reviews.outcomes = approvals(TrustLevel.WINDOW);
+
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(workItems.calls).containsExactly("approved");
+        assertThat(approvals.calls).hasSize(1);
+    }
+
+    private static List<Review> approvals(int count) {
+        return IntStream.range(0, count)
+                .mapToObj(i -> new Review(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        ReviewVerdict.APPROVED,
+                        Optional.empty(),
+                        NOW.plusSeconds(i)))
+                .toList();
     }
 
     @Test

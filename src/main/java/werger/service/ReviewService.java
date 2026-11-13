@@ -56,8 +56,9 @@ public class ReviewService {
     }
 
     /**
-     * Records the verdict and, for an approval, hands it to the approval gate once the review has committed. The caller
-     * must already have checked that {@code reviewer} is an active user and supplies their role.
+     * Records the verdict and, for a trusted approval, pushes it once the review has committed. An untrusted approval
+     * commits straight into {@code awaiting_countersign}. The caller must already have checked that {@code reviewer} is
+     * an active user and supplies their role.
      */
     public Result<ReviewError, Optional<ApprovalOutcome>> review(
             Submission submission, UUID reviewer, Role reviewerRole, ReviewVerdict verdict, Optional<String> comment) {
@@ -65,19 +66,26 @@ public class ReviewService {
             return Result.err(new ReviewError.OwnSubmission());
         }
         Review review = new Review(submission.id(), reviewer, verdict, comment, clock.instant());
-        return Objects.requireNonNull(transactions.execute(status -> decide(status, submission, review)))
-                .fold(Result::err, ok -> Result.ok(approve(submission, review, reviewerRole)));
+        boolean trusted = verdict == ReviewVerdict.APPROVED && isTrusted(reviewer, reviewerRole);
+        return Objects.requireNonNull(transactions.execute(status -> decide(status, submission, review, trusted)))
+                .fold(Result::err, ok -> Result.ok(approve(submission, review, trusted)));
     }
 
-    private Optional<ApprovalOutcome> approve(Submission submission, Review review, Role reviewerRole) {
-        return review.verdict() == ReviewVerdict.APPROVED
-                ? Optional.of(approvals.onApproved(submission, review.reviewer(), reviewerRole))
-                : Optional.empty();
+    private boolean isTrusted(UUID reviewer, Role reviewerRole) {
+        return TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(reviewer, TrustLevel.WINDOW));
+    }
+
+    private Optional<ApprovalOutcome> approve(Submission submission, Review review, boolean trusted) {
+        if (review.verdict() != ReviewVerdict.APPROVED) {
+            return Optional.empty();
+        }
+        return Optional.of(trusted ? approvals.onApproved(submission) : new ApprovalOutcome.AwaitingCountersign());
     }
 
     // The status-gated transition runs first so that of two racing reviewers only one reaches the review insert.
-    private Result<ReviewError, Void> decide(TransactionStatus status, Submission submission, Review review) {
-        if (!transition(submission, review)) {
+    private Result<ReviewError, Void> decide(
+            TransactionStatus status, Submission submission, Review review, boolean trusted) {
+        if (!transition(submission, review, trusted)) {
             status.setRollbackOnly();
             return Result.err(new ReviewError.AlreadyDecided());
         }
@@ -98,9 +106,9 @@ public class ReviewService {
         points.award(new PointsLedgerEntry(user, submission.id(), reason, amount, review.reviewedAt()));
     }
 
-    private boolean transition(Submission submission, Review review) {
+    private boolean transition(Submission submission, Review review, boolean trusted) {
         return switch (review.verdict()) {
-            case APPROVED -> workItems.markApproved(submission.workItem(), submission.id());
+            case APPROVED -> approvedStatus(submission, trusted);
             case REJECTED ->
                 workItems.moveToRevisionPending(
                         submission.workItem(),
@@ -109,5 +117,11 @@ public class ReviewService {
                         review.comment(),
                         review.reviewedAt().plus(REVISION_WINDOW));
         };
+    }
+
+    private boolean approvedStatus(Submission submission, boolean trusted) {
+        return trusted
+                ? workItems.markApproved(submission.workItem(), submission.id())
+                : workItems.markApprovedAwaitingCountersign(submission.workItem(), submission.id());
     }
 }

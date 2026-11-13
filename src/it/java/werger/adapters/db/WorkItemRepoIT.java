@@ -436,14 +436,16 @@ class WorkItemRepoIT {
     }
 
     @Test
-    void markAwaitingCountersignOnlyMovesAnApprovedItem() {
-        UUID approved = itemWithStatus("approved");
-        UUID synced = itemWithStatus("synced");
+    void markApprovedAwaitingCountersignOnlyFromPendingReviewForTheCurrentSubmission() {
+        WorkItem item = newItem();
+        UUID submission = newSubmission(item.id(), newUser());
 
-        assertThat(repo.markAwaitingCountersign(approved)).isTrue();
-        assertThat(repo.markAwaitingCountersign(synced)).isFalse();
-        assertThat(statusOf(approved)).isEqualTo("awaiting_countersign");
-        assertThat(statusOf(synced)).isEqualTo("synced");
+        assertThat(repo.markApprovedAwaitingCountersign(item.id(), submission)).isFalse();
+        awaitReview(item.id(), submission);
+        assertThat(repo.markApprovedAwaitingCountersign(item.id(), UUID.randomUUID()))
+                .isFalse();
+        assertThat(repo.markApprovedAwaitingCountersign(item.id(), submission)).isTrue();
+        assertThat(statusOf(item.id())).isEqualTo("awaiting_countersign");
     }
 
     @Test

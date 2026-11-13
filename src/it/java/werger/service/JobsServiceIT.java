@@ -12,7 +12,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import werger.adapters.db.ItFixture;
-import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.SubmissionRepo;
 import werger.adapters.db.WorkItemRepo;
 import werger.domain.Language;
@@ -41,7 +40,7 @@ class JobsServiceIT {
         jobs = new JobsService(
                 workItems,
                 submissions,
-                new ApprovalService(new RecordingSource(), workItems, new ReviewRepo(db.jdbc())),
+                new ApprovalService(new RecordingSource(), workItems),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -103,8 +102,8 @@ class JobsServiceIT {
 
     @Test
     void anUntrustedApprovalAwaitingCountersignIsNeverPushed() {
-        Submission waiting = approvedAfterACrash();
-        workItems.markAwaitingCountersign(waiting.workItem());
+        Submission waiting = db.pendingSubmission(db.newUser(), NOW);
+        workItems.markApprovedAwaitingCountersign(waiting.workItem(), waiting.id());
 
         assertThat(jobs.retryOwedPushes()).isZero();
 

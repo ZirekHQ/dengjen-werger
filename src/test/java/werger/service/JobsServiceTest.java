@@ -61,7 +61,7 @@ class JobsServiceTest {
                 return owed;
             }
         };
-        ApprovalService approvals = new ApprovalService(null, null, null) {
+        ApprovalService approvals = new ApprovalService(null, null) {
             @Override
             public String adapterName() {
                 return "stub";

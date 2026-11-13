@@ -140,10 +140,12 @@ public class WorkItemRepo {
                 """, id, submissionId);
     }
 
-    /** Parks an untrusted approval so that {@code approved} keeps meaning a push is owed. */
-    public boolean markAwaitingCountersign(UUID id) {
-        return transition(
-                "update work_items set status = 'awaiting_countersign' where id = ? and status = 'approved'", id);
+    /** Records an untrusted approval directly as parked, so {@code approved} only ever means a push is owed. */
+    public boolean markApprovedAwaitingCountersign(UUID id, UUID submissionId) {
+        return transition("""
+                update work_items set status = 'awaiting_countersign'
+                where id = ? and status = 'pending_review' and pending_submission_id = ?
+                """, id, submissionId);
     }
 
     public boolean markUpstreamApprovalPending(UUID id) {
