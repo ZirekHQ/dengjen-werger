@@ -445,11 +445,12 @@ class WorkItemRepoIT {
     void onlyAnItemWithAPushOwedCanBeClaimedAndAQueuedFailureReleasesTheClaim() {
         UUID synced = itemWithStatus("synced");
         UUID approved = itemWithStatus("approved");
+        UUID submission = linkSubmission(approved);
         repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300));
 
         assertThat(repo.claimPush(synced, SWEEP_NOW, SWEEP_NOW.plusSeconds(300)))
                 .isFalse();
-        assertThat(repo.markUpstreamApprovalPending(approved)).isTrue();
+        assertThat(repo.markUpstreamApprovalPending(approved, submission)).isTrue();
         assertThat(repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300)))
                 .isTrue();
     }
@@ -470,6 +471,12 @@ class WorkItemRepoIT {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private UUID linkSubmission(UUID item) {
+        UUID submission = newSubmission(item, newUser());
+        jdbc.update("update work_items set pending_submission_id = ? where id = ?", submission, item);
+        return submission;
     }
 
     private UUID itemWithStatus(String status) {
@@ -496,13 +503,34 @@ class WorkItemRepoIT {
         UUID approved = itemWithStatus("approved");
         UUID queued = itemWithStatus("upstream_approval_pending");
         UUID synced = itemWithStatus("synced");
+        UUID approvedSubmission = linkSubmission(approved);
+        UUID queuedSubmission = linkSubmission(queued);
 
-        assertThat(repo.markUpstreamRejected(approved)).isTrue();
-        assertThat(repo.markUpstreamRejected(queued)).isTrue();
-        assertThat(repo.markUpstreamRejected(synced)).isFalse();
+        assertThat(repo.markUpstreamRejected(approved, approvedSubmission)).isTrue();
+        assertThat(repo.markUpstreamRejected(queued, queuedSubmission)).isTrue();
+        assertThat(repo.markUpstreamRejected(synced, UUID.randomUUID())).isFalse();
         assertThat(statusOf(approved)).isEqualTo("upstream_rejected");
         assertThat(statusOf(queued)).isEqualTo("upstream_rejected");
         assertThat(repo.find(approved).orElseThrow().status()).isEqualTo(new WorkItemStatus.UpstreamRejected());
+    }
+
+    @Test
+    void aStaleSubmissionCannotRejectAnItemApprovedForANewerOne() {
+        UUID approved = itemWithStatus("approved");
+        linkSubmission(approved);
+
+        assertThat(repo.markUpstreamRejected(approved, UUID.randomUUID())).isFalse();
+        assertThat(statusOf(approved)).isEqualTo("approved");
+    }
+
+    @Test
+    void aStaleSubmissionCannotQueueAnItemApprovedForANewerOne() {
+        UUID approved = itemWithStatus("approved");
+        linkSubmission(approved);
+
+        assertThat(repo.markUpstreamApprovalPending(approved, UUID.randomUUID()))
+                .isFalse();
+        assertThat(statusOf(approved)).isEqualTo("approved");
     }
 
     @Test
@@ -517,7 +545,7 @@ class WorkItemRepoIT {
         UUID waiting = itemWithStatus("awaiting_countersign");
 
         assertThat(repo.markSynced(waiting, UUID.randomUUID())).isFalse();
-        assertThat(repo.markUpstreamApprovalPending(waiting)).isFalse();
+        assertThat(repo.markUpstreamApprovalPending(waiting, UUID.randomUUID())).isFalse();
         assertThat(statusOf(waiting)).isEqualTo("awaiting_countersign");
     }
 
@@ -541,7 +569,7 @@ class WorkItemRepoIT {
         UUID submission = newSubmission(item, newUser());
         awaitReview(item, submission);
         repo.markApproved(item, submission);
-        repo.markUpstreamApprovalPending(item);
+        repo.markUpstreamApprovalPending(item, submission);
         UUID synced = newItem().id();
         jdbc.update("update work_items set status = 'synced' where id = ?", synced);
 
@@ -557,7 +585,7 @@ class WorkItemRepoIT {
         UUID current = newSubmission(item, newUser());
         awaitReview(item, current);
         repo.markApproved(item, current);
-        repo.markUpstreamApprovalPending(item);
+        repo.markUpstreamApprovalPending(item, current);
 
         assertThat(repo.markSynced(item, stale)).isFalse();
         assertThat(statusOf(item)).isEqualTo("upstream_approval_pending");
@@ -568,9 +596,10 @@ class WorkItemRepoIT {
     void markUpstreamApprovalPendingOnlyMovesAnApprovedItem() {
         UUID approved = itemWithStatus("approved");
         UUID synced = itemWithStatus("synced");
+        UUID submission = linkSubmission(approved);
 
-        assertThat(repo.markUpstreamApprovalPending(approved)).isTrue();
-        assertThat(repo.markUpstreamApprovalPending(synced)).isFalse();
+        assertThat(repo.markUpstreamApprovalPending(approved, submission)).isTrue();
+        assertThat(repo.markUpstreamApprovalPending(synced, UUID.randomUUID())).isFalse();
         assertThat(statusOf(approved)).isEqualTo("upstream_approval_pending");
         assertThat(statusOf(synced)).isEqualTo("synced");
     }

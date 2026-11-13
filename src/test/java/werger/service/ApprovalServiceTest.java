@@ -82,13 +82,13 @@ class ApprovalServiceTest {
         }
 
         @Override
-        public boolean markUpstreamRejected(UUID id) {
+        public boolean markUpstreamRejected(UUID id, UUID submissionId) {
             calls.add("upstream_rejected");
             return transitionMatches;
         }
 
         @Override
-        public boolean markUpstreamApprovalPending(UUID id) {
+        public boolean markUpstreamApprovalPending(UUID id, UUID submissionId) {
             calls.add("upstream_pending");
             return transitionMatches;
         }

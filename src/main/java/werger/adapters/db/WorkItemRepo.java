@@ -158,19 +158,19 @@ public class WorkItemRepo {
     }
 
     /** Releases the push claim, so the next sweep retries the item. */
-    public boolean markUpstreamApprovalPending(UUID id) {
+    public boolean markUpstreamApprovalPending(UUID id, UUID submissionId) {
         return transition("""
                 update work_items set status = 'upstream_approval_pending', push_claimed_until = null
-                where id = ? and status in ('approved', 'upstream_approval_pending')
-                """, id);
+                where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
+                """, id, submissionId);
     }
 
     /** Terminal: the retry sweep selects only {@code approved} and {@code upstream_approval_pending}. */
-    public boolean markUpstreamRejected(UUID id) {
+    public boolean markUpstreamRejected(UUID id, UUID submissionId) {
         return transition("""
                 update work_items set status = 'upstream_rejected'
-                where id = ? and status in ('approved', 'upstream_approval_pending')
-                """, id);
+                where id = ? and status in ('approved', 'upstream_approval_pending') and pending_submission_id = ?
+                """, id, submissionId);
     }
 
     private boolean transition(String sql, Object... args) {

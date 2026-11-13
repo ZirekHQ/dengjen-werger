@@ -49,19 +49,23 @@ public class ApprovalService {
                 .find(submission.workItem())
                 .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
         return source.submit(item, submission.proposedTranslation())
-                .<ApprovalOutcome>fold(error -> onPushFailed(item, error), ok -> markSynced(submission));
+                .<ApprovalOutcome>fold(error -> onPushFailed(item, submission, error), ok -> markSynced(submission));
     }
 
     private ApprovalOutcome markSynced(Submission submission) {
         return recorded(workItems.markSynced(submission.workItem(), submission.id()), new ApprovalOutcome.Synced());
     }
 
-    private ApprovalOutcome onPushFailed(WorkItem item, SourceError error) {
+    private ApprovalOutcome onPushFailed(WorkItem item, Submission submission, SourceError error) {
         return switch (error) {
             case SourceError.Transient _ ->
-                recorded(workItems.markUpstreamApprovalPending(item.id()), new ApprovalOutcome.UpstreamPending());
+                recorded(
+                        workItems.markUpstreamApprovalPending(item.id(), submission.id()),
+                        new ApprovalOutcome.UpstreamPending());
             case SourceError.Rejected(String message) ->
-                recorded(workItems.markUpstreamRejected(item.id()), new ApprovalOutcome.UpstreamRejected(message));
+                recorded(
+                        workItems.markUpstreamRejected(item.id(), submission.id()),
+                        new ApprovalOutcome.UpstreamRejected(message));
         };
     }
 

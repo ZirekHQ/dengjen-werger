@@ -93,7 +93,7 @@ class JobsServiceIT {
     @Test
     void anItemQueuedAfterATransientFailureIsRetriedAndSynced() {
         Submission queued = approvedAfterACrash();
-        workItems.markUpstreamApprovalPending(queued.workItem());
+        workItems.markUpstreamApprovalPending(queued.workItem(), queued.id());
 
         assertThat(jobs.retryOwedPushes()).isEqualTo(1);
 
