@@ -59,8 +59,16 @@ public class ApprovalService {
                     .find(submission.workItem())
                     .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));
         } catch (RuntimeException e) {
-            workItems.releasePush(submission.workItem(), claimId);
+            releaseKeeping(e, submission, claimId);
             throw e;
+        }
+    }
+
+    private void releaseKeeping(RuntimeException original, Submission submission, UUID claimId) {
+        try {
+            workItems.releasePush(submission.workItem(), claimId);
+        } catch (RuntimeException releaseFailure) {
+            original.addSuppressed(releaseFailure);
         }
     }
 

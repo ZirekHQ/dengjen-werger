@@ -63,6 +63,7 @@ class ApprovalServiceTest {
         UUID claimedBy;
         UUID releasedBy;
         boolean findFails;
+        boolean releaseFails;
 
         StubWorkItems() {
             super(new JdbcTemplate());
@@ -85,6 +86,9 @@ class ApprovalServiceTest {
 
         @Override
         public boolean releasePush(UUID id, UUID claimId) {
+            if (releaseFails) {
+                throw new IllegalStateException("release failed");
+            }
             releasedBy = claimId;
             return true;
         }
@@ -141,6 +145,16 @@ class ApprovalServiceTest {
 
         assertThat(workItems.releasedBy).isNotNull().isEqualTo(workItems.claimedBy);
         assertThat(source.pushed).isEmpty();
+    }
+
+    @Test
+    void aFailedReleaseKeepsTheReadFailureAsTheThrownException() {
+        workItems.findFails = true;
+        workItems.releaseFails = true;
+
+        assertThatThrownBy(() -> service.onApproved(SUBMISSION))
+                .hasMessage("db down")
+                .hasSuppressedException(new IllegalStateException("release failed"));
     }
 
     @Test
