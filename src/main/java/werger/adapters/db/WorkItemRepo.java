@@ -153,6 +153,14 @@ public class WorkItemRepo {
                 "update work_items set status = 'upstream_approval_pending' where id = ? and status = 'approved'", id);
     }
 
+    /** Terminal: the retry sweep selects only {@code approved} and {@code upstream_approval_pending}. */
+    public boolean markUpstreamRejected(UUID id) {
+        return transition("""
+                update work_items set status = 'upstream_rejected'
+                where id = ? and status in ('approved', 'upstream_approval_pending')
+                """, id);
+    }
+
     private boolean transition(String sql, Object... args) {
         return jdbc.update(sql, args) == 1;
     }
@@ -190,6 +198,7 @@ public class WorkItemRepo {
             case "approved" -> new WorkItemStatus.Approved();
             case "awaiting_countersign" -> new WorkItemStatus.AwaitingCountersign();
             case "upstream_approval_pending" -> new WorkItemStatus.UpstreamApprovalPending();
+            case "upstream_rejected" -> new WorkItemStatus.UpstreamRejected();
             case "synced" -> new WorkItemStatus.Synced();
             case "retired" -> new WorkItemStatus.Retired();
             default -> throw new SQLException("Unknown work item status: " + row.getString("status"));

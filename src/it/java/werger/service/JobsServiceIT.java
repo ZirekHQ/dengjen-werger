@@ -143,4 +143,16 @@ class JobsServiceIT {
             assertThat(other.statusOf(foreign.workItem())).isEqualTo("approved");
         }
     }
+
+    @Test
+    void aPermanentlyRejectedPushIsNotRetriedOnTheNextSweep() {
+        Submission refused = approvedAfterACrash();
+        pushResult = Result.err(new SourceError.Rejected("plural"));
+
+        jobs.retryOwedPushes();
+        jobs.retryOwedPushes();
+
+        assertThat(pushed).containsExactly(refused.workItem().toString());
+        assertThat(db.statusOf(refused.workItem())).isEqualTo("upstream_rejected");
+    }
 }

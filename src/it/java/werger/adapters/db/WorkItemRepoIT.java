@@ -449,6 +449,20 @@ class WorkItemRepoIT {
     }
 
     @Test
+    void markUpstreamRejectedMovesOnlyAnItemWithAPushOwed() {
+        UUID approved = itemWithStatus("approved");
+        UUID queued = itemWithStatus("upstream_approval_pending");
+        UUID synced = itemWithStatus("synced");
+
+        assertThat(repo.markUpstreamRejected(approved)).isTrue();
+        assertThat(repo.markUpstreamRejected(queued)).isTrue();
+        assertThat(repo.markUpstreamRejected(synced)).isFalse();
+        assertThat(statusOf(approved)).isEqualTo("upstream_rejected");
+        assertThat(statusOf(queued)).isEqualTo("upstream_rejected");
+        assertThat(repo.find(approved).orElseThrow().status()).isEqualTo(new WorkItemStatus.UpstreamRejected());
+    }
+
+    @Test
     void findMapsAnItemAwaitingCountersign() {
         UUID waiting = itemWithStatus("awaiting_countersign");
 

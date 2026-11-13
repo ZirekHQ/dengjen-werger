@@ -72,6 +72,12 @@ class ApprovalServiceTest {
         }
 
         @Override
+        public boolean markUpstreamRejected(UUID id) {
+            calls.add("upstream_rejected");
+            return transitionMatches;
+        }
+
+        @Override
         public boolean markUpstreamApprovalPending(UUID id) {
             calls.add("upstream_pending");
             return transitionMatches;
@@ -102,13 +108,21 @@ class ApprovalServiceTest {
     }
 
     @Test
-    void aPermanentRejectionIsSurfacedWithItsMessageAndNeverQueuedForRetry() {
+    void aPermanentRejectionIsSurfacedWithItsMessageAndParkedSoItIsNeverRetried() {
         source.outcome = Result.err(new SourceError.Rejected("Crowdin string id is not numeric: abc"));
 
         var outcome = service.onApproved(SUBMISSION);
 
         assertThat(outcome).isEqualTo(new ApprovalOutcome.UpstreamRejected("Crowdin string id is not numeric: abc"));
-        assertThat(workItems.calls).isEmpty();
+        assertThat(workItems.calls).containsExactly("upstream_rejected");
+    }
+
+    @Test
+    void aRejectionRecordThatMatchesNoRowReportsSuperseded() {
+        workItems.transitionMatches = false;
+        source.outcome = Result.err(new SourceError.Rejected("plural"));
+
+        assertThat(service.onApproved(SUBMISSION)).isEqualTo(new ApprovalOutcome.Superseded());
     }
 
     @Test

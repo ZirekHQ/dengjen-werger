@@ -46,7 +46,8 @@ public class ApprovalService {
         return switch (error) {
             case SourceError.Transient _ ->
                 recorded(workItems.markUpstreamApprovalPending(item.id()), new ApprovalOutcome.UpstreamPending());
-            case SourceError.Rejected(String message) -> new ApprovalOutcome.UpstreamRejected(message);
+            case SourceError.Rejected(String message) ->
+                recorded(workItems.markUpstreamRejected(item.id()), new ApprovalOutcome.UpstreamRejected(message));
         };
     }
 

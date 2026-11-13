@@ -18,6 +18,8 @@ public sealed interface WorkItemStatus {
 
     record UpstreamApprovalPending() implements WorkItemStatus {}
 
+    record UpstreamRejected() implements WorkItemStatus {}
+
     record Synced() implements WorkItemStatus {}
 
     record Retired() implements WorkItemStatus {}
