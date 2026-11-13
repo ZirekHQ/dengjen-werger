@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import werger.ports.TranslationSource;
 class JobsServiceIT {
     private static final Instant NOW = Instant.parse("2026-09-01T12:00:00Z");
 
+    private final String adapter = "jobs-it-" + UUID.randomUUID();
     private ItFixture db;
     private WorkItemRepo workItems;
     private JobsService jobs;
@@ -33,7 +35,7 @@ class JobsServiceIT {
 
     @BeforeEach
     void connect() {
-        db = ItFixture.open("jobs-service-it");
+        db = ItFixture.open(adapter);
         workItems = new WorkItemRepo(db.jdbc());
         SubmissionRepo submissions = new SubmissionRepo(db.jdbc());
         jobs = new JobsService(
@@ -53,7 +55,7 @@ class JobsServiceIT {
     private final class RecordingSource implements TranslationSource {
         @Override
         public String adapterName() {
-            return "jobs-service-it";
+            return adapter;
         }
 
         @Override
@@ -132,7 +134,7 @@ class JobsServiceIT {
 
     @Test
     void anApprovedItemOfAnotherAdapterIsNeitherPushedNorTouched() {
-        try (ItFixture other = ItFixture.open("jobs-service-it-other")) {
+        try (ItFixture other = ItFixture.open(adapter + "-other")) {
             Submission foreign = other.pendingSubmission(other.newUser(), NOW);
             workItems.markApproved(foreign.workItem(), foreign.id());
 
