@@ -105,6 +105,11 @@ class ReviewServiceTest {
 
     private static final class NoSource implements TranslationSource {
         @Override
+        public String adapterName() {
+            return "stub";
+        }
+
+        @Override
         public List<WorkItem> fetchWorkItems(Language language) {
             throw new UnsupportedOperationException();
         }

@@ -33,6 +33,11 @@ public class CrowdinSource implements TranslationSource {
     }
 
     @Override
+    public String adapterName() {
+        return ADAPTER;
+    }
+
+    @Override
     public List<WorkItem> fetchWorkItems(Language language) {
         List<CrowdinTranslation> translations = client.getTranslations(language.code(), fileId);
         Set<Long> approvedTranslationIds = client.approvedTranslationIds(language.code(), fileId);

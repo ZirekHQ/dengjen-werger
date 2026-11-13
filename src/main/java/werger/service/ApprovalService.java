@@ -21,6 +21,10 @@ public class ApprovalService {
         this.reviews = reviews;
     }
 
+    public String adapterName() {
+        return source.adapterName();
+    }
+
     /** Must run after the approving review has committed, so a slow upstream never holds its transaction open. */
     public ApprovalOutcome onApproved(Submission submission, UUID reviewer, Role reviewerRole) {
         if (!TrustLevel.isTrusted(reviewerRole, reviews.decidedOutcomesOf(reviewer, TrustLevel.WINDOW))) {

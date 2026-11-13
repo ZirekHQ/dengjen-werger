@@ -52,6 +52,11 @@ class JobsServiceIT {
 
     private final class RecordingSource implements TranslationSource {
         @Override
+        public String adapterName() {
+            return "jobs-service-it";
+        }
+
+        @Override
         public List<WorkItem> fetchWorkItems(Language language) {
             return List.of();
         }
@@ -123,5 +128,18 @@ class JobsServiceIT {
         assertThat(jobs.retryOwedPushes()).isZero();
 
         assertThat(pushed).isEmpty();
+    }
+
+    @Test
+    void anApprovedItemOfAnotherAdapterIsNeitherPushedNorTouched() {
+        try (ItFixture other = ItFixture.open("jobs-service-it-other")) {
+            Submission foreign = other.pendingSubmission(other.newUser(), NOW);
+            workItems.markApproved(foreign.workItem(), foreign.id());
+
+            assertThat(jobs.retryOwedPushes()).isZero();
+
+            assertThat(pushed).isEmpty();
+            assertThat(other.statusOf(foreign.workItem())).isEqualTo("approved");
+        }
     }
 }

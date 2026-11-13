@@ -37,6 +37,11 @@ class ApprovalServiceTest {
         Result<SourceError, Void> outcome = Result.ok(null);
 
         @Override
+        public String adapterName() {
+            return "stub";
+        }
+
+        @Override
         public List<WorkItem> fetchWorkItems(Language language) {
             return List.of();
         }

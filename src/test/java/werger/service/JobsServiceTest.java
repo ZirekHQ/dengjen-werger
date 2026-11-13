@@ -57,11 +57,16 @@ class JobsServiceTest {
             WorkItemRepo repo, List<Submission> owed, Function<Submission, ApprovalOutcome> retry) {
         SubmissionRepo submissions = new SubmissionRepo(new JdbcTemplate()) {
             @Override
-            public List<Submission> awaitingPush() {
+            public List<Submission> awaitingPush(String sourceAdapter) {
                 return owed;
             }
         };
         ApprovalService approvals = new ApprovalService(null, null, null) {
+            @Override
+            public String adapterName() {
+                return "stub";
+            }
+
             @Override
             public ApprovalOutcome retryPush(Submission submission) {
                 return retry.apply(submission);

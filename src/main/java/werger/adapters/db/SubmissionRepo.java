@@ -51,14 +51,15 @@ public class SubmissionRepo {
     }
 
     /** The approved submissions whose push is owed: approved items and those queued after a transient failure. */
-    public List<Submission> awaitingPush() {
+    public List<Submission> awaitingPush(String sourceAdapter) {
         return jdbc.query("""
                         select s.id, s.work_item_id, s.submitter_id, s.proposed_translation, s.submitted_at
                         from submissions s
                         join work_items w on w.pending_submission_id = s.id
                         where w.status in ('approved', 'upstream_approval_pending')
+                          and w.source_adapter = ?
                         order by s.submitted_at, s.id
-                        """, SubmissionRepo::toSubmission);
+                        """, SubmissionRepo::toSubmission, sourceAdapter);
     }
 
     private static Submission toSubmission(ResultSet row, int rowNum) throws SQLException {

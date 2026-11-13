@@ -66,6 +66,11 @@ class ReviewServiceIT {
 
     private final class RecordingSource implements TranslationSource {
         @Override
+        public String adapterName() {
+            return "review-service-it";
+        }
+
+        @Override
         public List<WorkItem> fetchWorkItems(Language language) {
             return List.of();
         }
