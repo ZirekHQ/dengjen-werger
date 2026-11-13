@@ -75,7 +75,7 @@ public class CrowdinSource implements TranslationSource {
     // Crowdin holds only a suggestion.
     private Result<SourceError, Void> create(WorkItem item, long stringId, String translation) {
         try {
-            if (hasPluralForms(item, stringId)) {
+            if (client.hasPlurals(stringId)) {
                 return Result.err(new SourceError.Rejected("Crowdin string " + stringId + " is plural"));
             }
             client.approveTranslation(translationId(item, stringId, translation));
@@ -85,13 +85,6 @@ public class CrowdinSource implements TranslationSource {
         } catch (RuntimeException e) {
             return Result.err(new SourceError.Transient(String.valueOf(e.getMessage())));
         }
-    }
-
-    // A submission reviews one text, so approving one form would leave the string unapproved upstream while the item
-    // reads synced. Only a string that already has translations shows its forms.
-    private boolean hasPluralForms(WorkItem item, long stringId) {
-        return client.getTranslations(item.language(), fileId).stream()
-                .anyMatch(t -> t.stringId() == stringId && t.isPlural());
     }
 
     // A retry after a failed approval finds the translation already on Crowdin; creating it again would duplicate it.

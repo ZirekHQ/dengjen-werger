@@ -113,6 +113,19 @@ public class CrowdinClient {
                 .toList();
     }
 
+    public boolean hasPlurals(long stringId) {
+        CrowdinEnvelope.Wrapped<CrowdinStringKind> string = httpClient
+                .get()
+                .uri(URI.create(BASE + projectId + "/strings/" + stringId))
+                .headers(h -> h.setBearerAuth(token))
+                .retrieve()
+                .body(new ParameterizedTypeReference<>() {});
+        if (string == null || string.data() == null) {
+            throw new IllegalStateException("Crowdin returned no string " + stringId);
+        }
+        return string.data().hasPlurals();
+    }
+
     public List<CrowdinStringTranslation> stringTranslations(String languageId, long stringId) {
         return paginate(
                 offset -> resource("translations", offset)

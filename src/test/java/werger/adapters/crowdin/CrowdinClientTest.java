@@ -45,6 +45,20 @@ class CrowdinClientTest {
     }
 
     @Test
+    void hasPluralsReadsTheFlagFromTheSingleStringEndpointEvenWhenTextIsAPluralObject() {
+        server.expect(requestTo(PROJECT + "/strings/42"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"data":{"id":42,"hasPlurals":true,"text":{"one":"%d book","other":"%d books"}}}""", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(PROJECT + "/strings/43")).andRespond(withSuccess("""
+                        {"data":{"id":43,"hasPlurals":false,"text":"OK"}}""", MediaType.APPLICATION_JSON));
+
+        assertThat(crowdin(500).hasPlurals(42L)).isTrue();
+        assertThat(crowdin(500).hasPlurals(43L)).isFalse();
+        server.verify();
+    }
+
+    @Test
     void stringTranslationsQueriesOneStringInOneLanguageAndDecodesEachTranslation() {
         server.expect(requestTo(Matchers.startsWith(PROJECT + "/translations")))
                 .andExpect(method(HttpMethod.GET))
