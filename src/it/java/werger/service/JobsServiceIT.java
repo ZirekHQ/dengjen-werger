@@ -40,7 +40,7 @@ class JobsServiceIT {
         jobs = new JobsService(
                 workItems,
                 submissions,
-                new ApprovalService(new RecordingSource(), workItems),
+                new ApprovalService(new RecordingSource(), workItems, Clock.fixed(NOW, ZoneOffset.UTC)),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -154,5 +154,26 @@ class JobsServiceIT {
 
         assertThat(pushed).containsExactly(refused.workItem().toString());
         assertThat(db.statusOf(refused.workItem())).isEqualTo("upstream_rejected");
+    }
+
+    @Test
+    void anItemWhosePushIsInFlightIsLeftToThatPush() {
+        Submission inFlight = approvedAfterACrash();
+        workItems.claimPush(inFlight.workItem(), NOW, NOW.plusSeconds(60));
+
+        assertThat(jobs.retryOwedPushes()).isZero();
+
+        assertThat(pushed).isEmpty();
+        assertThat(db.statusOf(inFlight.workItem())).isEqualTo("approved");
+    }
+
+    @Test
+    void anItemWhoseClaimLapsedAfterACrashIsPushedAgain() {
+        Submission lapsed = approvedAfterACrash();
+        workItems.claimPush(lapsed.workItem(), NOW.minusSeconds(600), NOW.minusSeconds(1));
+
+        assertThat(jobs.retryOwedPushes()).isEqualTo(1);
+
+        assertThat(db.statusOf(lapsed.workItem())).isEqualTo("synced");
     }
 }

@@ -2,7 +2,9 @@ package werger.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -55,6 +57,8 @@ class ApprovalServiceTest {
     private static final class StubWorkItems extends WorkItemRepo {
         final List<String> calls = new ArrayList<>();
         boolean transitionMatches = true;
+        boolean claimable = true;
+        Instant claimedUntil;
 
         StubWorkItems() {
             super(new JdbcTemplate());
@@ -63,6 +67,12 @@ class ApprovalServiceTest {
         @Override
         public Optional<WorkItem> find(UUID id) {
             return Optional.of(ITEM);
+        }
+
+        @Override
+        public boolean claimPush(UUID id, Instant now, Instant until) {
+            claimedUntil = until;
+            return claimable;
         }
 
         @Override
@@ -86,7 +96,7 @@ class ApprovalServiceTest {
 
     private final StubSource source = new StubSource();
     private final StubWorkItems workItems = new StubWorkItems();
-    private final ApprovalService service = new ApprovalService(source, workItems);
+    private final ApprovalService service = new ApprovalService(source, workItems, Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
     void aTrustedApprovalIsPushedAndMarksTheItemSynced() {
@@ -138,5 +148,21 @@ class ApprovalServiceTest {
         source.outcome = Result.err(new SourceError.Transient("503"));
 
         assertThat(service.onApproved(SUBMISSION)).isEqualTo(new ApprovalOutcome.Superseded());
+    }
+
+    @Test
+    void anItemWhosePushIsClaimedElsewhereIsNotPushedAgain() {
+        workItems.claimable = false;
+
+        assertThat(service.onApproved(SUBMISSION)).isEqualTo(new ApprovalOutcome.PushInFlight());
+        assertThat(source.pushed).isEmpty();
+        assertThat(workItems.calls).isEmpty();
+    }
+
+    @Test
+    void aPushHoldsItsClaimForTheClaimDurationFromTheClock() {
+        service.onApproved(SUBMISSION);
+
+        assertThat(workItems.claimedUntil).isEqualTo(NOW.plus(ApprovalService.PUSH_CLAIM));
     }
 }

@@ -1,5 +1,8 @@
 package werger.service;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import werger.adapters.db.WorkItemRepo;
 import werger.domain.Submission;
 import werger.domain.WorkItem;
@@ -8,12 +11,16 @@ import werger.ports.TranslationSource;
 
 /** Pushes a trusted approval upstream and records the result. */
 public class ApprovalService {
+    static final Duration PUSH_CLAIM = Duration.ofMinutes(5);
+
     private final TranslationSource source;
     private final WorkItemRepo workItems;
+    private final Clock clock;
 
-    public ApprovalService(TranslationSource source, WorkItemRepo workItems) {
+    public ApprovalService(TranslationSource source, WorkItemRepo workItems, Clock clock) {
         this.source = source;
         this.workItems = workItems;
+        this.clock = clock;
     }
 
     public String adapterName() {
@@ -31,6 +38,13 @@ public class ApprovalService {
     }
 
     private ApprovalOutcome push(Submission submission) {
+        Instant now = clock.instant();
+        return workItems.claimPush(submission.workItem(), now, now.plus(PUSH_CLAIM))
+                ? pushClaimed(submission)
+                : new ApprovalOutcome.PushInFlight();
+    }
+
+    private ApprovalOutcome pushClaimed(Submission submission) {
         WorkItem item = workItems
                 .find(submission.workItem())
                 .orElseThrow(() -> new IllegalStateException("Approved item vanished: " + submission.workItem()));

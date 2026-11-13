@@ -24,11 +24,11 @@ public class JobsService {
     }
 
     /**
-     * Pushes every approval of this service's source adapter whose push is still owed after a crash or a transient failure, and counts those that
+     * Pushes every approval of this service's source adapter whose push is owed and not in flight, and counts those that
      * synced. Untrusted approvals sit in {@code awaiting_countersign}, so the sweep never sees them.
      */
     public int retryOwedPushes() {
-        return (int) submissions.awaitingPush(approvals.adapterName()).stream()
+        return (int) submissions.awaitingPush(approvals.adapterName(), clock.instant()).stream()
                 .map(approvals::retryPush)
                 .filter(new ApprovalOutcome.Synced()::equals)
                 .count();

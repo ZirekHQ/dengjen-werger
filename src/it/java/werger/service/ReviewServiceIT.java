@@ -52,7 +52,7 @@ class ReviewServiceIT {
                 new SubmissionRepo(db.jdbc()),
                 new ReviewRepo(db.jdbc()),
                 new PointsRepo(db.jdbc()),
-                new ApprovalService(new RecordingSource(), workItems),
+                new ApprovalService(new RecordingSource(), workItems, Clock.fixed(NOW, ZoneOffset.UTC)),
                 db.transactions(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }

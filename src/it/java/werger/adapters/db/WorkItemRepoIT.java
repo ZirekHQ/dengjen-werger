@@ -411,6 +411,49 @@ class WorkItemRepoIT {
         }
     }
 
+    @Test
+    void ofManyConcurrentPushersExactlyOneClaimsTheItem() throws Exception {
+        UUID item = itemWithStatus("approved");
+        int pushers = 8;
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Boolean>> claims = IntStream.range(0, pushers)
+                    .mapToObj(i -> executor.submit(() -> {
+                        start.await();
+                        return repo.claimPush(item, SWEEP_NOW, SWEEP_NOW.plusSeconds(300));
+                    }))
+                    .toList();
+            start.countDown();
+
+            assertThat(claims.stream().filter(WorkItemRepoIT::get).count()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void aLapsedClaimCanBeTakenAgainButAHeldOneCannot() {
+        UUID item = itemWithStatus("approved");
+
+        assertThat(repo.claimPush(item, SWEEP_NOW, SWEEP_NOW.plusSeconds(300))).isTrue();
+        assertThat(repo.claimPush(item, SWEEP_NOW.plusSeconds(299), SWEEP_NOW.plusSeconds(900)))
+                .isFalse();
+        assertThat(repo.claimPush(item, SWEEP_NOW.plusSeconds(300), SWEEP_NOW.plusSeconds(900)))
+                .isTrue();
+    }
+
+    @Test
+    void onlyAnItemWithAPushOwedCanBeClaimedAndAQueuedFailureReleasesTheClaim() {
+        UUID synced = itemWithStatus("synced");
+        UUID approved = itemWithStatus("approved");
+        repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300));
+
+        assertThat(repo.claimPush(synced, SWEEP_NOW, SWEEP_NOW.plusSeconds(300)))
+                .isFalse();
+        assertThat(repo.markUpstreamApprovalPending(approved)).isTrue();
+        assertThat(repo.claimPush(approved, SWEEP_NOW, SWEEP_NOW.plusSeconds(300)))
+                .isTrue();
+    }
+
     private UUID newSubmission(UUID workItem, UUID submitter) {
         UUID id = UUID.randomUUID();
         jdbc.update(

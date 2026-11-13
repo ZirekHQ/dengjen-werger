@@ -2,6 +2,7 @@ package werger.adapters.db;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -51,15 +52,17 @@ public class SubmissionRepo {
     }
 
     /** The approved submissions whose push is owed: approved items and those queued after a transient failure. */
-    public List<Submission> awaitingPush(String sourceAdapter) {
-        return jdbc.query("""
+    public List<Submission> awaitingPush(String sourceAdapter, Instant now) {
+        return jdbc.query(
+                """
                         select s.id, s.work_item_id, s.submitter_id, s.proposed_translation, s.submitted_at
                         from submissions s
                         join work_items w on w.pending_submission_id = s.id
                         where w.status in ('approved', 'upstream_approval_pending')
                           and w.source_adapter = ?
+                          and (w.push_claimed_until is null or w.push_claimed_until <= ?)
                         order by s.submitted_at, s.id
-                        """, SubmissionRepo::toSubmission, sourceAdapter);
+                        """, SubmissionRepo::toSubmission, sourceAdapter, OffsetDateTime.ofInstant(now, ZoneOffset.UTC));
     }
 
     private static Submission toSubmission(ResultSet row, int rowNum) throws SQLException {

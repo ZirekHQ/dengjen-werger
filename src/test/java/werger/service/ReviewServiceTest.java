@@ -106,7 +106,7 @@ class ReviewServiceTest {
         final List<String> calls = new ArrayList<>();
 
         StubApprovals() {
-            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()));
+            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()), Clock.fixed(NOW, ZoneOffset.UTC));
         }
 
         @Override

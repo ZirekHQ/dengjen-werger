@@ -11,6 +11,9 @@ public sealed interface ApprovalOutcome {
     /** Upstream refused the translation for good, so the item is parked in {@code upstream_rejected} and never retried. */
     record UpstreamRejected(String message) implements ApprovalOutcome {}
 
+    /** Another push holds the item's claim, or the item is no longer owed one, so nothing was sent. */
+    record PushInFlight() implements ApprovalOutcome {}
+
     /** The item left {@code approved} before the result could be recorded, so nothing was written. */
     record Superseded() implements ApprovalOutcome {}
 }

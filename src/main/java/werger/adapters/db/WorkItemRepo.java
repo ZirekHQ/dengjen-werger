@@ -148,9 +148,21 @@ public class WorkItemRepo {
                 """, id, submissionId);
     }
 
+    /** Takes the exclusive right to push the item until {@code until}; a lapsed claim can be taken again. */
+    public boolean claimPush(UUID id, Instant now, Instant until) {
+        return transition("""
+                update work_items set push_claimed_until = ?
+                where id = ? and status in ('approved', 'upstream_approval_pending')
+                  and (push_claimed_until is null or push_claimed_until <= ?)
+                """, utc(until), id, utc(now));
+    }
+
+    /** Releases the push claim, so the next sweep retries the item. */
     public boolean markUpstreamApprovalPending(UUID id) {
-        return transition(
-                "update work_items set status = 'upstream_approval_pending' where id = ? and status = 'approved'", id);
+        return transition("""
+                update work_items set status = 'upstream_approval_pending', push_claimed_until = null
+                where id = ? and status in ('approved', 'upstream_approval_pending')
+                """, id);
     }
 
     /** Terminal: the retry sweep selects only {@code approved} and {@code upstream_approval_pending}. */
