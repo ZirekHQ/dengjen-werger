@@ -7,6 +7,8 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -18,9 +20,10 @@ class HttpTimeoutsTest {
     @Test
     void aHungUpstreamFailsTheCallAtTheReadTimeout() throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        CountDownLatch release = new CountDownLatch(1);
         server.createContext("/", exchange -> {
             try {
-                Thread.sleep(3000);
+                release.await(3, TimeUnit.SECONDS);
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
@@ -40,6 +43,7 @@ class HttpTimeoutsTest {
 
             assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
         } finally {
+            release.countDown();
             server.stop(0);
         }
     }
