@@ -6,6 +6,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,6 +19,8 @@ public final class ItFixture implements AutoCloseable {
     private final String adapter;
     private final HikariDataSource pool;
     private final JdbcTemplate jdbc;
+    // A purged user loses the auth ref that cleanup matches on, so created users are also remembered by id.
+    private final List<UUID> createdUsers = new ArrayList<>();
 
     private ItFixture(String adapter, HikariDataSource pool) {
         this.adapter = adapter;
@@ -57,6 +60,7 @@ public final class ItFixture implements AutoCloseable {
                 id,
                 adapter + "-" + id,
                 status);
+        createdUsers.add(id);
         return id;
     }
 
@@ -121,8 +125,17 @@ public final class ItFixture implements AutoCloseable {
             jdbc.update("delete from pronunciation_fixes where id in (" + ownedFixes + ")", adapter + "-%");
             jdbc.update("delete from users where auth_provider_ref like ?", adapter + "-%");
             jdbc.update("delete from languages where code like ?", "x-" + adapter + "-%");
+            createdUsers.forEach(this::deleteWithTheirFixes);
         } finally {
             pool.close();
         }
+    }
+
+    // A purged user has no auth_provider_ref, so the adapter-prefix clean-up above cannot reach their fixes.
+    private void deleteWithTheirFixes(UUID user) {
+        String theirFixes = "select id from pronunciation_fixes where submitter_id = ?";
+        jdbc.update("delete from pronunciation_fix_reviews where fix_id in (" + theirFixes + ")", user);
+        jdbc.update("delete from pronunciation_fixes where submitter_id = ?", user);
+        jdbc.update("delete from users where id = ?", user);
     }
 }

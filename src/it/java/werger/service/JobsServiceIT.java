@@ -130,6 +130,17 @@ class JobsServiceIT {
     }
 
     @Test
+    void aRetryThatFailsAgainKeepsAnAlreadyQueuedItemQueuedForTheNextSweep() {
+        Submission queued = approvedAfterACrash();
+        claimThenQueue(queued);
+        pushResult = Result.err(new SourceError.Transient("down"));
+
+        assertThat(jobs.retryOwedPushes()).isZero();
+
+        assertThat(db.statusOf(queued.workItem())).isEqualTo("upstream_approval_pending");
+    }
+
+    @Test
     void anAlreadySyncedItemIsNotPushedAgain() {
         Submission done = approvedAfterACrash();
         workItems.markSynced(done.workItem(), done.id());

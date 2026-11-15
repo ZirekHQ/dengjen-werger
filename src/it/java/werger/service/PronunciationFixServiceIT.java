@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessException;
 import werger.adapters.db.ItFixture;
 import werger.adapters.db.PronunciationFixRepo;
+import werger.adapters.db.UserRepo;
 import werger.domain.PronunciationFix;
 import werger.domain.PronunciationFixReview;
 import werger.domain.PronunciationFixStatus;
@@ -103,6 +104,17 @@ class PronunciationFixServiceIT {
         assertThat(service.nextForReview(db.newUser()))
                 .map(PronunciationFix::id)
                 .isNotEqualTo(Optional.of(fromSuspended.id()));
+    }
+
+    @Test
+    void aPurgedSubmittersPendingFixIsNeverServedToAReviewer() {
+        UUID submitter = db.newUser();
+        PronunciationFix pending = submit(submitter, "Silav");
+        new UserRepo(db.jdbc()).purge(submitter);
+
+        assertThat(service.nextForReview(db.newUser()))
+                .map(PronunciationFix::id)
+                .isNotEqualTo(Optional.of(pending.id()));
     }
 
     @Test
