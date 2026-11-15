@@ -3,6 +3,7 @@ package werger.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -14,7 +15,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,7 @@ import werger.ports.TranslationSource;
 
 class ReviewServiceIT {
     private static final Instant NOW = Instant.parse("2026-09-01T12:00:00Z");
+    private static final Duration WAIT = Duration.ofSeconds(10);
 
     private ItFixture db;
     private WorkItemRepo workItems;
@@ -274,22 +278,34 @@ class ReviewServiceIT {
                 locked.countDown();
                 await(release);
             }));
-            locked.await();
+            assertThat(locked.await(WAIT.toSeconds(), TimeUnit.SECONDS)).isTrue();
             Future<?> approval = executor.submit(() ->
                     service.review(toApprove, reviewer, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty()));
-            Thread.sleep(300);
-            release.countDown();
-            rejection.get();
-            approval.get();
+            try {
+                Awaitility.await().atMost(WAIT).until(this::aSessionWaitsOnAnAdvisoryLock);
+            } finally {
+                release.countDown();
+            }
+            rejection.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+            approval.get(WAIT.toSeconds(), TimeUnit.SECONDS);
         }
 
         assertThat(pushed).isEmpty();
         assertThat(db.statusOf(toApprove.workItem())).isEqualTo("awaiting_countersign");
     }
 
+    private boolean aSessionWaitsOnAnAdvisoryLock() {
+        Integer waiting = db.jdbc()
+                .queryForObject(
+                        "select count(*) from pg_locks where locktype = 'advisory' and not granted", Integer.class);
+        return waiting != null && waiting > 0;
+    }
+
     private static void await(CountDownLatch latch) {
         try {
-            latch.await();
+            if (!latch.await(WAIT.toSeconds(), TimeUnit.SECONDS)) {
+                throw new IllegalStateException("latch was never released");
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
