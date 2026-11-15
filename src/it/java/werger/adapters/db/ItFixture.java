@@ -60,6 +60,13 @@ public final class ItFixture implements AutoCloseable {
         return id;
     }
 
+    /** A language only this fixture uses, so queries scoped to it see no rows another test or a person made. */
+    public String newLanguage() {
+        String code = "x-" + adapter + "-" + UUID.randomUUID();
+        jdbc.update("insert into languages (code, name) values (?, ?)", code, adapter);
+        return code;
+    }
+
     public UUID newItem() {
         UUID id = UUID.randomUUID();
         jdbc.update(
@@ -108,7 +115,12 @@ public final class ItFixture implements AutoCloseable {
                     adapter);
             jdbc.update("delete from submissions where work_item_id in (" + ownedItems + ")", adapter);
             jdbc.update("delete from work_items where source_adapter = ?", adapter);
+            String ownedFixes = "select id from pronunciation_fixes where submitter_id in "
+                    + "(select id from users where auth_provider_ref like ?)";
+            jdbc.update("delete from pronunciation_fix_reviews where fix_id in (" + ownedFixes + ")", adapter + "-%");
+            jdbc.update("delete from pronunciation_fixes where id in (" + ownedFixes + ")", adapter + "-%");
             jdbc.update("delete from users where auth_provider_ref like ?", adapter + "-%");
+            jdbc.update("delete from languages where code like ?", "x-" + adapter + "-%");
         } finally {
             pool.close();
         }

@@ -23,26 +23,39 @@ transaction pooler, port 6543")]
 OIDC token or shared secret"| Backend
     Auth["Supabase Auth
 Google / Apple / GitHub / email"] -.->|issues the JWT the backend verifies| Backend
+    Backend -->|"gRPC on loopback"| Engine["dengjen-tts-grpc
+speech engine, runs beside the backend"]
+    Backend -->|"GitHub App installation token"| GitHub["GitHub
+lexicon pull requests on ZirekHQ/dengjen"]
 ----
 
 One Spring Boot service holds all backend logic. There is no separate service
-boundary yet — the SPA and Crowdin are the only other systems in play.
+boundary yet. Besides the SPA and Crowdin, it calls the `dengjen-tts-grpc`
+speech engine for the listening page's audio (the engine listens on loopback
+only, so it runs in the same host or pod) and GitHub, as the Werger App, to
+propose approved pronunciation fixes to dengjen's lexicon.
 
 == Backend layering (ports &amp; adapters)
 
 ----
 src/main/java/werger/
 ├── domain/    records, enums, sealed WorkItemStatus — pure data + state machine, zero I/O
-├── ports/     TranslationSource, MachineTranslationSource, Result, SourceError, MtError
+├── ports/     TranslationSource, MachineTranslationSource, LexiconTarget, SpeechSynthesizer, Result,
+│              SourceError, MtError, SynthesisError
 │                                    — interfaces the domain depends on
 ├── adapters/
 │   ├── crowdin/         CrowdinClient + response records (RestClient) — implements TranslationSource
 │   ├── googletranslate/ GoogleTranslateClient, GoogleTranslateSource + response records
 │   │                    — implements MachineTranslationSource
-│   └── db/              Db, DbConfig                             — HikariCP pool over pgjdbc
+│   ├── github/          GitHubClient, GitHubLexiconTarget, GitHubAppToken (RestClient) — implements LexiconTarget
+│   ├── dengjen/         DengjenGrpcSynthesizer, DengjenProto (gRPC to dengjen-tts-grpc) — implements SpeechSynthesizer
+│   └── db/              Db, DbConfig, *Repo (UserRepo, PronunciationFixRepo, ...) — HikariCP pool over pgjdbc
 ├── service/   DraftCredit           — pure: scores a submission against its machine-translated draft
-├── http/      HealthController      — HTTP entrypoints, calls into domain/ports
-└── WergerApplication                — Spring Boot entrypoint and composition root
+│              ListeningService      — test sentences and their audio, cached once spoken
+├── http/      HealthController, MeController, PronunciationFixController, ListeningController — HTTP entrypoints;
+│              SupabaseAuth checks sign-in tokens, SignedInUser provisions the user
+├── AppWiring                        — composition root: picks the concrete adapters for the services
+└── WergerApplication                — Spring Boot entrypoint
 ----
 
 Dependency rule: `domain` never imports from `adapters` or `http`, and
@@ -77,6 +90,19 @@ it's enforced by convention and PR review only.
  revision-window sweep and the owed-push retry sweep so far), since `ApprovalService`
  pushes approvals but does not yet score them with `DraftCredit`. See
  link:docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md[`docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md`].
+* *Approved pronunciation fixes reach dengjen through one pull request per
+ language* (`LexiconPublisher` against the `LexiconTarget` port, #110). Each
+ run starts from the lexicon on dengjen's default branch: a fix whose row is
+ already there becomes `landed`, an earlier fix for the same written form
+ becomes `superseded`, and the rest are proposed together. Werger keeps no
+ record of the pull request itself: merging it is what lands the fixes.
+ `GitHubLexiconTarget` owns the branch `werger/lexicon-<language>`. Each
+ change is one commit on top of the default-branch commit the run read, and
+ the branch moves straight to it: it never points at the base itself, which
+ would close the open pull request, and a change that reached the default
+ branch after the read survives the merge. Edits pushed to that branch by hand
+ do not survive the next change. Nothing calls the publisher yet; the jobs
+ endpoint (task 18) will.
 * *GraalVM native-image on Cloud Run* remains the target, chosen for
  cold-start latency given request-driven (not always-on) traffic. The
  build ships a JVM image today (see `Dockerfile`); a native build via

@@ -55,6 +55,21 @@ link:docs/superpowers/plans/2026-09-13-mt-draft-assist-plan.md[`docs/superpowers
 |16. `AccountDeletionService` |PII purge, contribution retention |Not started 
 |===
 
+== Started alongside Milestone 2: Pronunciation fixes (#110)
+
+Native speakers flag a word the voice says wrongly and suggest how it should sound; a second speaker
+reviews it, and an approved fix lands as a row of dengjen's lexicon file
+(`crates/text/kurmanji-phonemizer/lexicon/kmr.tsv`) through an automated pull request. Built in slices:
+
+|===
+|Slice |Ships |Status
+
+|1. Lexicon row rules |`PronunciationFix`, `PronunciationSay`, `LexiconRow`: validates input against the lexicon format and renders the row |Done
+|2. Storage and review |`V04` migration, `PronunciationFixRepo`, `PronunciationFixService`: submit, review, no self-review, race-tested |Done
+|3. Lexicon pull request |`LexiconPublisher`, `V05` landed/superseded states, and `GitHubLexiconTarget`, which opens or updates the pull request on `ZirekHQ/dengjen`; the jobs endpoint (18) will run it |Done
+|4. Listening page |Test sentences, "sounds right / sounds wrong", the suggestion form; needs auth (17) and the SPA (19) |Done: sign-in, the suggestion and review API, and the page, which plays test sentences through `dengjen-tts-grpc`; going live waits on deployment (20)
+|===
+
 == Then: Milestone 3 — Contributor-Facing Surface
 
 |===
