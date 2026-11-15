@@ -20,6 +20,9 @@ import werger.ports.SourceError;
 import werger.ports.TranslationSource;
 
 public class CrowdinSource implements TranslationSource {
+    /** Worst-case sequential HTTP calls one push makes: plural check, lookup, create, re-lookup, approve. */
+    public static final int HTTP_CALLS_PER_PUSH = 5;
+
     private static final String ADAPTER = "crowdin";
     private static final Set<HttpStatusCode> RETRYABLE_4XX =
             Set.of(HttpStatus.REQUEST_TIMEOUT, HttpStatus.TOO_MANY_REQUESTS);
@@ -30,6 +33,11 @@ public class CrowdinSource implements TranslationSource {
     public CrowdinSource(CrowdinClient client, long fileId) {
         this.client = client;
         this.fileId = fileId;
+    }
+
+    @Override
+    public String adapterName() {
+        return ADAPTER;
     }
 
     @Override
@@ -71,15 +79,57 @@ public class CrowdinSource implements TranslationSource {
         }
     }
 
+    // Both calls share one handler: a failed approval must not read as a sync, or the item is marked synced while
+    // Crowdin holds only a suggestion.
     private Result<SourceError, Void> create(WorkItem item, long stringId, String translation) {
         try {
-            client.createTranslation(item.language(), stringId, translation);
+            if (client.hasPlurals(stringId)) {
+                return Result.err(new SourceError.Rejected("Crowdin string " + stringId + " is plural"));
+            }
+            client.approveTranslation(translationId(item, stringId, translation));
             return Result.ok(null);
         } catch (RestClientResponseException e) {
             return Result.err(toError(e));
         } catch (RuntimeException e) {
             return Result.err(new SourceError.Transient(String.valueOf(e.getMessage())));
         }
+    }
+
+    // A retry after a failed approval finds the translation already on Crowdin; creating it again would duplicate it.
+    private long translationId(WorkItem item, long stringId, String translation) {
+        return existingTranslationId(item, stringId, translation)
+                .orElseGet(() -> createOrReuse(item, stringId, translation));
+    }
+
+    // A concurrent worker can create the same text between the lookup and the create; Crowdin then rejects the
+    // duplicate.
+    private long createOrReuse(WorkItem item, long stringId, String translation) {
+        try {
+            return client.createTranslation(item.language(), stringId, translation)
+                    .id();
+        } catch (RestClientResponseException e) {
+            return reuseAfterRefusedCreate(e, item, stringId, translation);
+        }
+    }
+
+    // A transient failure never triggers the lookup, and a failing lookup never replaces the create's own error.
+    private long reuseAfterRefusedCreate(
+            RestClientResponseException refused, WorkItem item, long stringId, String translation) {
+        if (!isDefinitiveRejection(refused)) {
+            throw refused;
+        }
+        try {
+            return existingTranslationId(item, stringId, translation).orElseThrow(() -> refused);
+        } catch (RestClientResponseException _) {
+            throw refused;
+        }
+    }
+
+    private Optional<Long> existingTranslationId(WorkItem item, long stringId, String translation) {
+        return client.stringTranslations(item.language(), stringId).stream()
+                .filter(t -> t.text().equals(translation))
+                .map(CrowdinStringTranslation::id)
+                .findFirst();
     }
 
     // A string can hold several submissions; the highest translationId is the most recent one.
@@ -113,8 +163,12 @@ public class CrowdinSource implements TranslationSource {
 
     // 4xx means Crowdin refused this request, except 408 and 429, which clear on retry.
     private static SourceError toError(RestClientResponseException e) {
-        return e.getStatusCode().is4xxClientError() && !RETRYABLE_4XX.contains(e.getStatusCode())
+        return isDefinitiveRejection(e)
                 ? new SourceError.Rejected("Crowdin rejected the request: " + e.getStatusCode())
                 : new SourceError.Transient("Crowdin returned " + e.getStatusCode());
+    }
+
+    private static boolean isDefinitiveRejection(RestClientResponseException e) {
+        return e.getStatusCode().is4xxClientError() && !RETRYABLE_4XX.contains(e.getStatusCode());
     }
 }

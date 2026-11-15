@@ -10,6 +10,9 @@ import werger.domain.WorkItem;
  * approved translation back.
  */
 public interface TranslationSource {
+    /** Matches {@code work_items.source_adapter} for every item this source owns. */
+    String adapterName();
+
     List<WorkItem> fetchWorkItems(Language language);
 
     List<TmSegment> fetchMemory(Language language);

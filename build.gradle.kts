@@ -108,6 +108,7 @@ testing {
                 implementation(libs.spring.boot.starter.test)
                 implementation(libs.spring.jdbc)
                 implementation(libs.hikaricp)
+                implementation(libs.spring.boot.starter.restclient)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }

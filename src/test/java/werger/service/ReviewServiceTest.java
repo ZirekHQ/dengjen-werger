@@ -9,18 +9,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import werger.adapters.db.PointsRepo;
 import werger.adapters.db.ReviewRepo;
 import werger.adapters.db.SubmissionRepo;
 import werger.adapters.db.WorkItemRepo;
+import werger.domain.Language;
 import werger.domain.PointsLedgerEntry;
 import werger.domain.PointsReason;
 import werger.domain.Review;
 import werger.domain.ReviewVerdict;
+import werger.domain.Role;
 import werger.domain.Submission;
+import werger.domain.TmSegment;
+import werger.domain.WorkItem;
 import werger.ports.Result;
+import werger.ports.SourceError;
+import werger.ports.TranslationSource;
 
 class ReviewServiceTest {
     private static final Instant NOW = Instant.parse("2026-09-01T12:00:00Z");
@@ -47,6 +54,12 @@ class ReviewServiceTest {
         }
 
         @Override
+        public boolean markApprovedAwaitingCountersign(UUID id, UUID submissionId) {
+            calls.add("awaiting_countersign");
+            return transitionWins;
+        }
+
+        @Override
         public boolean moveToRevisionPending(
                 UUID id, UUID submissionId, UUID submitter, Optional<String> comment, Instant expiresAt) {
             calls.add("revision:" + submitter);
@@ -58,9 +71,15 @@ class ReviewServiceTest {
 
     private static final class StubReviews extends ReviewRepo {
         final List<Review> inserted = new ArrayList<>();
+        List<Review> outcomes = List.of();
 
         StubReviews() {
             super(new JdbcTemplate());
+        }
+
+        @Override
+        public List<Review> decidedOutcomesOf(UUID submitter, int limit) {
+            return outcomes;
         }
 
         @Override
@@ -83,20 +102,62 @@ class ReviewServiceTest {
         }
     }
 
+    private static final class StubApprovals extends ApprovalService {
+        final List<String> calls = new ArrayList<>();
+        boolean pushThrows;
+
+        StubApprovals() {
+            super(new NoSource(), new WorkItemRepo(new JdbcTemplate()), Clock.fixed(NOW, ZoneOffset.UTC));
+        }
+
+        @Override
+        public ApprovalOutcome onApproved(Submission submission) {
+            calls.add(submission.id().toString());
+            if (pushThrows) {
+                throw new IllegalStateException("db down");
+            }
+            return new ApprovalOutcome.Synced();
+        }
+    }
+
+    private static final class NoSource implements TranslationSource {
+        @Override
+        public String adapterName() {
+            return "stub";
+        }
+
+        @Override
+        public List<WorkItem> fetchWorkItems(Language language) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<TmSegment> fetchMemory(Language language) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Result<SourceError, Void> submit(WorkItem item, String translation) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
     private final StubWorkItems workItems = new StubWorkItems();
     private final StubReviews reviews = new StubReviews();
     private final StubPoints points = new StubPoints();
+    private final StubApprovals approvals = new StubApprovals();
     private final ReviewService service = new ReviewService(
             workItems,
             new SubmissionRepo(new JdbcTemplate()),
             reviews,
             points,
+            approvals,
             NoTransactions.template(),
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
     void reviewerCannotReviewTheirOwnSubmissionAndNothingIsWritten() {
-        var result = service.review(SUBMISSION, SUBMITTER, ReviewVerdict.APPROVED, Optional.empty());
+        var result = service.review(SUBMISSION, SUBMITTER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result)
                 .isInstanceOfSatisfying(
@@ -106,8 +167,8 @@ class ReviewServiceTest {
     }
 
     @Test
-    void approvalMarksTheItemApprovedAndRecordsTheReview() {
-        var result = service.review(SUBMISSION, REVIEWER, ReviewVerdict.APPROVED, Optional.empty());
+    void aTrustedApprovalMarksTheItemApprovedAndRecordsTheReview() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result).isInstanceOf(Result.Ok.class);
         assertThat(workItems.calls).containsExactly("approved");
@@ -120,7 +181,7 @@ class ReviewServiceTest {
 
     @Test
     void rejectionGivesTheSubmitterAFortyEightHourWindowFromTheClock() {
-        service.review(SUBMISSION, REVIEWER, ReviewVerdict.REJECTED, Optional.of("wrong register"));
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.REJECTED, Optional.of("wrong register"));
 
         assertThat(workItems.calls).containsExactly("revision:" + SUBMITTER);
         assertThat(workItems.revisionDeadline).isEqualTo(NOW.plusSeconds(48 * 3_600));
@@ -131,7 +192,7 @@ class ReviewServiceTest {
     void aLostRaceReportsAlreadyDecidedAndRecordsNoReview() {
         workItems.transitionWins = false;
 
-        var result = service.review(SUBMISSION, REVIEWER, ReviewVerdict.APPROVED, Optional.empty());
+        var result = service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(result)
                 .isInstanceOfSatisfying(
@@ -142,7 +203,7 @@ class ReviewServiceTest {
 
     @Test
     void approvalPaysTheReviewerAndTheSubmitter() {
-        service.review(SUBMISSION, REVIEWER, ReviewVerdict.APPROVED, Optional.empty());
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(points.awarded)
                 .containsExactlyInAnyOrder(
@@ -162,7 +223,7 @@ class ReviewServiceTest {
 
     @Test
     void rejectionPaysOnlyTheReviewer() {
-        service.review(SUBMISSION, REVIEWER, ReviewVerdict.REJECTED, Optional.of("wrong register"));
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.REJECTED, Optional.of("wrong register"));
 
         assertThat(points.awarded).singleElement().satisfies(entry -> {
             assertThat(entry.user()).isEqualTo(REVIEWER);
@@ -174,9 +235,67 @@ class ReviewServiceTest {
     void aLostRaceAndASelfReviewPayNothing() {
         workItems.transitionWins = false;
 
-        service.review(SUBMISSION, REVIEWER, ReviewVerdict.APPROVED, Optional.empty());
-        service.review(SUBMISSION, SUBMITTER, ReviewVerdict.APPROVED, Optional.empty());
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+        service.review(SUBMISSION, SUBMITTER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
 
         assertThat(points.awarded).isEmpty();
+    }
+
+    @Test
+    void aTrustedApprovalIsPushedAfterTheReviewCommits() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.Synced())));
+        assertThat(approvals.calls).containsExactly(SUBMISSION.id().toString());
+    }
+
+    @Test
+    void aPushThatThrowsAfterTheReviewCommittedStillReportsTheVerdictAsRecorded() {
+        approvals.pushThrows = true;
+
+        var result = service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.PushDeferred())));
+        assertThat(points.awarded).isNotEmpty();
+    }
+
+    @Test
+    void anUntrustedApprovalCommitsStraightIntoAwaitingCountersignAndIsNeverPushed() {
+        var result = service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(result).isEqualTo(Result.ok(Optional.of(new ApprovalOutcome.AwaitingCountersign())));
+        assertThat(workItems.calls).containsExactly("awaiting_countersign");
+        assertThat(approvals.calls).isEmpty();
+    }
+
+    @Test
+    void aContributorWithAnEarnedRecordIsTrustedToPush() {
+        reviews.outcomes = approvals(TrustLevel.WINDOW);
+
+        service.review(SUBMISSION, REVIEWER, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(workItems.calls).containsExactly("approved");
+        assertThat(approvals.calls).hasSize(1);
+    }
+
+    private static List<Review> approvals(int count) {
+        return IntStream.range(0, count)
+                .mapToObj(i -> new Review(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        ReviewVerdict.APPROVED,
+                        Optional.empty(),
+                        NOW.plusSeconds(i)))
+                .toList();
+    }
+
+    @Test
+    void aRejectionALostRaceAndASelfReviewNeverReachTheApprovalGate() {
+        service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.REJECTED, Optional.empty());
+        service.review(SUBMISSION, SUBMITTER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+        workItems.transitionWins = false;
+        service.review(SUBMISSION, REVIEWER, Role.MAINTAINER, ReviewVerdict.APPROVED, Optional.empty());
+
+        assertThat(approvals.calls).isEmpty();
     }
 }

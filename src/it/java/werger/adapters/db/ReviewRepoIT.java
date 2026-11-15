@@ -53,4 +53,24 @@ class ReviewRepoIT {
 
         assertThatThrownBy(() -> repo.insert(own)).isInstanceOf(DataAccessException.class);
     }
+
+    @Test
+    void decidedOutcomesOfReturnsTheNewestReviewsOfTheSubmittersOwnWorkOnly() {
+        UUID submitter = db.newUser();
+        Instant base = Instant.parse("2026-09-01T12:00:00Z");
+        Review oldest = reviewed(submitter, ReviewVerdict.REJECTED, base);
+        Review middle = reviewed(submitter, ReviewVerdict.APPROVED, base.plusSeconds(60));
+        Review newest = reviewed(submitter, ReviewVerdict.APPROVED, base.plusSeconds(120));
+        reviewed(db.newUser(), ReviewVerdict.REJECTED, base.plusSeconds(180));
+
+        assertThat(repo.decidedOutcomesOf(submitter, 2)).containsExactly(newest, middle);
+        assertThat(repo.decidedOutcomesOf(submitter, 10)).containsExactly(newest, middle, oldest);
+    }
+
+    private Review reviewed(UUID submitter, ReviewVerdict verdict, Instant at) {
+        UUID submission = db.pendingSubmission(submitter, at).id();
+        Review review = new Review(submission, db.newUser(), verdict, Optional.empty(), at);
+        repo.insert(review);
+        return review;
+    }
 }
