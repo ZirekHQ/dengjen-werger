@@ -271,27 +271,39 @@ class ReviewServiceIT {
         CountDownLatch release = new CountDownLatch(1);
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<?> rejection = executor.submit(() -> db.transactions().executeWithoutResult(status -> {
-                UUID rejecter = db.newUser();
-                reviewRepo.lockTrustOf(lastOwn.submitter(), rejecter);
-                reviewRepo.insert(new Review(lastOwn.id(), rejecter, ReviewVerdict.REJECTED, Optional.empty(), NOW));
-                locked.countDown();
-                await(release);
-            }));
-            assertThat(locked.await(WAIT.toSeconds(), TimeUnit.SECONDS)).isTrue();
-            Future<?> approval = executor.submit(() ->
-                    service.review(toApprove, reviewer, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty()));
             try {
+                Future<?> rejection = executor.submit(() -> db.transactions().executeWithoutResult(status -> {
+                    UUID rejecter = db.newUser();
+                    reviewRepo.lockTrustOf(lastOwn.submitter(), rejecter);
+                    reviewRepo.insert(
+                            new Review(lastOwn.id(), rejecter, ReviewVerdict.REJECTED, Optional.empty(), NOW));
+                    locked.countDown();
+                    await(release);
+                }));
+                awaitSignalOrWorkerFailure(locked, rejection);
+                Future<?> approval = executor.submit(() -> service.review(
+                        toApprove, reviewer, Role.CONTRIBUTOR, ReviewVerdict.APPROVED, Optional.empty()));
                 Awaitility.await().atMost(WAIT).until(this::aSessionWaitsOnAnAdvisoryLock);
+                release.countDown();
+                rejection.get(WAIT.toSeconds(), TimeUnit.SECONDS);
+                approval.get(WAIT.toSeconds(), TimeUnit.SECONDS);
             } finally {
                 release.countDown();
+                executor.shutdownNow();
             }
-            rejection.get(WAIT.toSeconds(), TimeUnit.SECONDS);
-            approval.get(WAIT.toSeconds(), TimeUnit.SECONDS);
         }
 
         assertThat(pushed).isEmpty();
         assertThat(db.statusOf(toApprove.workItem())).isEqualTo("awaiting_countersign");
+    }
+
+    // A worker that fails before it signals would otherwise leave this waiting; surface its own failure instead.
+    private static void awaitSignalOrWorkerFailure(CountDownLatch signal, Future<?> worker) throws Exception {
+        Awaitility.await().atMost(WAIT).until(() -> signal.getCount() == 0 || worker.isDone());
+        if (worker.isDone()) {
+            worker.get();
+        }
+        assertThat(signal.getCount()).isZero();
     }
 
     private boolean aSessionWaitsOnAnAdvisoryLock() {
