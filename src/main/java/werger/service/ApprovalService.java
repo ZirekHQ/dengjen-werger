@@ -12,7 +12,7 @@ import werger.ports.TranslationSource;
 
 /** Pushes a trusted approval upstream and records the result. */
 public class ApprovalService {
-    static final Duration PUSH_CLAIM = Duration.ofMinutes(5);
+    public static final Duration PUSH_CLAIM = Duration.ofMinutes(5);
 
     private final TranslationSource source;
     private final WorkItemRepo workItems;

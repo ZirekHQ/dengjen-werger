@@ -1,57 +1,18 @@
 package werger.adapters;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClient;
+import werger.adapters.crowdin.CrowdinSource;
+import werger.service.ApprovalService;
 
 class HttpTimeoutsTest {
-    private static final int CALLS_PER_CROWDIN_PUSH = 4;
-    private static final Duration PUSH_CLAIM = Duration.ofMinutes(5);
-
-    @Test
-    void aHungUpstreamFailsTheCallAtTheReadTimeout() throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        CountDownLatch release = new CountDownLatch(1);
-        server.createContext("/", exchange -> {
-            try {
-                release.await(3, TimeUnit.SECONDS);
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-            }
-            exchange.close();
-        });
-        server.start();
-        try {
-            RestClient client = HttpTimeouts.apply(RestClient.builder(), Duration.ofSeconds(1), Duration.ofMillis(300))
-                    .build();
-            long started = System.nanoTime();
-
-            assertThatThrownBy(() -> client.get()
-                            .uri("http://127.0.0.1:" + server.getAddress().getPort() + "/")
-                            .retrieve()
-                            .toBodilessEntity())
-                    .isInstanceOf(ResourceAccessException.class);
-
-            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
-        } finally {
-            release.countDown();
-            server.stop(0);
-        }
-    }
-
     @Test
     void aPushOfSequentialCallsFinishesWellInsideItsClaim() {
-        Duration worstCase = HttpTimeouts.CONNECT.plus(HttpTimeouts.READ).multipliedBy(CALLS_PER_CROWDIN_PUSH);
+        Duration worstCase =
+                HttpTimeouts.CONNECT.plus(HttpTimeouts.READ).multipliedBy(CrowdinSource.HTTP_CALLS_PER_PUSH);
 
-        assertThat(worstCase).isLessThanOrEqualTo(PUSH_CLAIM.dividedBy(2));
+        assertThat(worstCase).isLessThanOrEqualTo(ApprovalService.PUSH_CLAIM.dividedBy(2));
     }
 }

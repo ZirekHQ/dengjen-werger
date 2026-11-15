@@ -35,6 +35,8 @@ class CrowdinSourceTest {
         RuntimeException createFailure;
         RuntimeException approveFailure;
         List<CrowdinStringTranslation> existing = List.of();
+        List<CrowdinStringTranslation> existingOnceCreateFailed;
+        boolean createFailed;
         Set<Long> pluralStrings = Set.of();
 
         StubClient(List<CrowdinSourceString> strings, List<CrowdinTranslation> approved) {
@@ -84,13 +86,14 @@ class CrowdinSourceTest {
         @Override
         public List<CrowdinStringTranslation> stringTranslations(String languageId, long stringId) {
             calls.add("lookup:" + languageId + ":" + stringId);
-            return existing;
+            return createFailed && existingOnceCreateFailed != null ? existingOnceCreateFailed : existing;
         }
 
         @Override
         public CrowdinCreatedTranslation createTranslation(String languageId, long stringId, String text) {
             calls.add("create:" + languageId + ":" + stringId + ":" + text);
             if (createFailure != null) {
+                createFailed = true;
                 throw createFailure;
             }
             return new CrowdinCreatedTranslation(900L);
@@ -267,6 +270,33 @@ class CrowdinSourceTest {
 
         assertThat(result).isInstanceOf(Result.Ok.class);
         assertThat(client.calls).containsExactly("plural?:42", "lookup:kmr:42", "approve:8");
+    }
+
+    @Test
+    void submitApprovesTheTranslationAConcurrentWorkerCreatedWhenItsOwnCreateIsRejected() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure =
+                new RestClientResponseException("dup", HttpStatus.BAD_REQUEST, "Bad Request", null, null, null);
+        client.existingOnceCreateFailed = List.of(new CrowdinStringTranslation(8L, "Silav"));
+
+        var result = source(client).submit(item("42"), "Silav");
+
+        assertThat(result).isInstanceOf(Result.Ok.class);
+        assertThat(client.calls)
+                .containsExactly("plural?:42", "lookup:kmr:42", "create:kmr:42:Silav", "lookup:kmr:42", "approve:8");
+    }
+
+    @Test
+    void submitRejectsWhenCreateIsRefusedAndNoMatchingTranslationAppears() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure =
+                new RestClientResponseException("bad", HttpStatus.BAD_REQUEST, "Bad Request", null, null, null);
+        client.existingOnceCreateFailed = List.of(new CrowdinStringTranslation(7L, "Other"));
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
+        assertThat(client.calls).doesNotContain("approve:7");
     }
 
     @Test

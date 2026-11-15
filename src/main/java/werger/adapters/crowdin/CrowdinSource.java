@@ -20,6 +20,9 @@ import werger.ports.SourceError;
 import werger.ports.TranslationSource;
 
 public class CrowdinSource implements TranslationSource {
+    /** Worst-case sequential HTTP calls one push makes: plural check, lookup, create, re-lookup, approve. */
+    public static final int HTTP_CALLS_PER_PUSH = 5;
+
     private static final String ADAPTER = "crowdin";
     private static final Set<HttpStatusCode> RETRYABLE_4XX =
             Set.of(HttpStatus.REQUEST_TIMEOUT, HttpStatus.TOO_MANY_REQUESTS);
@@ -94,12 +97,26 @@ public class CrowdinSource implements TranslationSource {
 
     // A retry after a failed approval finds the translation already on Crowdin; creating it again would duplicate it.
     private long translationId(WorkItem item, long stringId, String translation) {
+        return existingTranslationId(item, stringId, translation)
+                .orElseGet(() -> createOrReuse(item, stringId, translation));
+    }
+
+    // A concurrent worker can create the same text between the lookup and the create; Crowdin then rejects the
+    // duplicate.
+    private long createOrReuse(WorkItem item, long stringId, String translation) {
+        try {
+            return client.createTranslation(item.language(), stringId, translation)
+                    .id();
+        } catch (RestClientResponseException e) {
+            return existingTranslationId(item, stringId, translation).orElseThrow(() -> e);
+        }
+    }
+
+    private Optional<Long> existingTranslationId(WorkItem item, long stringId, String translation) {
         return client.stringTranslations(item.language(), stringId).stream()
                 .filter(t -> t.text().equals(translation))
                 .map(CrowdinStringTranslation::id)
-                .findFirst()
-                .orElseGet(() -> client.createTranslation(item.language(), stringId, translation)
-                        .id());
+                .findFirst();
     }
 
     // A string can hold several submissions; the highest translationId is the most recent one.

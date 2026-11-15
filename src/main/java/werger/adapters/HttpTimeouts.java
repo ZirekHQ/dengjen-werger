@@ -5,7 +5,7 @@ import java.time.Duration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-/** Bounds every outbound call, so a hung upstream cannot hold a push claim past its lease. */
+/** Connect and read timeouts for a {@code RestClient.Builder}; each client must apply them where it is built. */
 public final class HttpTimeouts {
     public static final Duration CONNECT = Duration.ofSeconds(5);
     public static final Duration READ = Duration.ofSeconds(20);

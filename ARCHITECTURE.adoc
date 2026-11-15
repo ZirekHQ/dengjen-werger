@@ -74,7 +74,7 @@ it's enforced by convention and PR review only.
  `DraftCredit`) can distinguish confirming a draft as-is from real
  translation work, but nothing yet calls it — that happens once
  the Crowdin sync job exists (`JobsService` exists but holds only the
- revision-window sweep so far), since `ApprovalService`
+ revision-window sweep and the owed-push retry sweep so far), since `ApprovalService`
  pushes approvals but does not yet score them with `DraftCredit`. See
  link:docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md[`docs/superpowers/specs/2026-09-12-mt-draft-assist-design.md`].
 * *GraalVM native-image on Cloud Run* remains the target, chosen for
