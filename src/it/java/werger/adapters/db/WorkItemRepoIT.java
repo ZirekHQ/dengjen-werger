@@ -763,4 +763,18 @@ class WorkItemRepoIT {
         assertThat(statusOf(approved)).isEqualTo("upstream_approval_pending");
         assertThat(statusOf(synced)).isEqualTo("synced");
     }
+
+    @Test
+    void aRetryThatFailsAgainKeepsAnAlreadyQueuedItemQueuedUnderItsOwnClaim() {
+        UUID item = itemWithStatus("approved");
+        UUID submission = linkSubmission(item);
+        repo.markUpstreamApprovalPending(item, submission, claim(item));
+        UUID retryClaim = claim(item);
+
+        assertThat(repo.markUpstreamApprovalPending(item, submission, UUID.randomUUID()))
+                .isFalse();
+        assertThat(repo.markUpstreamApprovalPending(item, submission, retryClaim))
+                .isTrue();
+        assertThat(statusOf(item)).isEqualTo("upstream_approval_pending");
+    }
 }
