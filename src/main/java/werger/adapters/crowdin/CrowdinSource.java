@@ -108,7 +108,20 @@ public class CrowdinSource implements TranslationSource {
             return client.createTranslation(item.language(), stringId, translation)
                     .id();
         } catch (RestClientResponseException e) {
-            return existingTranslationId(item, stringId, translation).orElseThrow(() -> e);
+            return reuseAfterRefusedCreate(e, item, stringId, translation);
+        }
+    }
+
+    // A transient failure never triggers the lookup, and a failing lookup never replaces the create's own error.
+    private long reuseAfterRefusedCreate(
+            RestClientResponseException refused, WorkItem item, long stringId, String translation) {
+        if (!isDefinitiveRejection(refused)) {
+            throw refused;
+        }
+        try {
+            return existingTranslationId(item, stringId, translation).orElseThrow(() -> refused);
+        } catch (RestClientResponseException _) {
+            throw refused;
         }
     }
 
@@ -150,8 +163,12 @@ public class CrowdinSource implements TranslationSource {
 
     // 4xx means Crowdin refused this request, except 408 and 429, which clear on retry.
     private static SourceError toError(RestClientResponseException e) {
-        return e.getStatusCode().is4xxClientError() && !RETRYABLE_4XX.contains(e.getStatusCode())
+        return isDefinitiveRejection(e)
                 ? new SourceError.Rejected("Crowdin rejected the request: " + e.getStatusCode())
                 : new SourceError.Transient("Crowdin returned " + e.getStatusCode());
+    }
+
+    private static boolean isDefinitiveRejection(RestClientResponseException e) {
+        return e.getStatusCode().is4xxClientError() && !RETRYABLE_4XX.contains(e.getStatusCode());
     }
 }

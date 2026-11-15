@@ -36,6 +36,7 @@ class CrowdinSourceTest {
         RuntimeException approveFailure;
         List<CrowdinStringTranslation> existing = List.of();
         List<CrowdinStringTranslation> existingOnceCreateFailed;
+        RuntimeException lookupFailureOnceCreateFailed;
         boolean createFailed;
         Set<Long> pluralStrings = Set.of();
 
@@ -86,6 +87,9 @@ class CrowdinSourceTest {
         @Override
         public List<CrowdinStringTranslation> stringTranslations(String languageId, long stringId) {
             calls.add("lookup:" + languageId + ":" + stringId);
+            if (createFailed && lookupFailureOnceCreateFailed != null) {
+                throw lookupFailureOnceCreateFailed;
+            }
             return createFailed && existingOnceCreateFailed != null ? existingOnceCreateFailed : existing;
         }
 
@@ -284,6 +288,44 @@ class CrowdinSourceTest {
         assertThat(result).isInstanceOf(Result.Ok.class);
         assertThat(client.calls)
                 .containsExactly("plural?:42", "lookup:kmr:42", "create:kmr:42:Silav", "lookup:kmr:42", "approve:8");
+    }
+
+    @Test
+    void theLongestPushMakesAsManyCallsAsTheTimeoutBudgetCounts() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure =
+                new RestClientResponseException("dup", HttpStatus.BAD_REQUEST, "Bad Request", null, null, null);
+        client.existingOnceCreateFailed = List.of(new CrowdinStringTranslation(8L, "Silav"));
+
+        source(client).submit(item("42"), "Silav");
+
+        assertThat(client.calls).hasSize(CrowdinSource.HTTP_CALLS_PER_PUSH);
+    }
+
+    @Test
+    void submitDoesNotLookUpAgainWhenCreateFailsTransiently() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure = new RestClientResponseException(
+                "down", HttpStatus.SERVICE_UNAVAILABLE, "Unavailable", null, null, null);
+        client.existingOnceCreateFailed = List.of(new CrowdinStringTranslation(8L, "Silav"));
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Transient.class));
+        assertThat(client.calls).containsExactly("plural?:42", "lookup:kmr:42", "create:kmr:42:Silav");
+    }
+
+    @Test
+    void submitKeepsTheCreateErrorWhenTheLookupAfterItFails() {
+        var client = new StubClient(List.of(), List.of());
+        client.createFailure =
+                new RestClientResponseException("bad", HttpStatus.BAD_REQUEST, "Bad Request", null, null, null);
+        client.lookupFailureOnceCreateFailed =
+                new RestClientResponseException("down", HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null);
+
+        assertThat(source(client).submit(item("42"), "Silav"))
+                .isInstanceOfSatisfying(
+                        Result.Err.class, err -> assertThat(err.error()).isInstanceOf(SourceError.Rejected.class));
     }
 
     @Test
