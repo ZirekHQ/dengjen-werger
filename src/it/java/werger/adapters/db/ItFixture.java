@@ -125,9 +125,17 @@ public final class ItFixture implements AutoCloseable {
             jdbc.update("delete from pronunciation_fixes where id in (" + ownedFixes + ")", adapter + "-%");
             jdbc.update("delete from users where auth_provider_ref like ?", adapter + "-%");
             jdbc.update("delete from languages where code like ?", "x-" + adapter + "-%");
-            createdUsers.forEach(id -> jdbc.update("delete from users where id = ?", id));
+            createdUsers.forEach(this::deleteWithTheirFixes);
         } finally {
             pool.close();
         }
+    }
+
+    // A purged user has no auth_provider_ref, so the adapter-prefix clean-up above cannot reach their fixes.
+    private void deleteWithTheirFixes(UUID user) {
+        String theirFixes = "select id from pronunciation_fixes where submitter_id = ?";
+        jdbc.update("delete from pronunciation_fix_reviews where fix_id in (" + theirFixes + ")", user);
+        jdbc.update("delete from pronunciation_fixes where submitter_id = ?", user);
+        jdbc.update("delete from users where id = ?", user);
     }
 }
