@@ -1,4 +1,4 @@
-FROM postgres:17
+FROM postgres:18
 
 COPY --chown=postgres:postgres migrations/*.sql /docker-entrypoint-initdb.d/
 
